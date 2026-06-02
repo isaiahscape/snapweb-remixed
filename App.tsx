@@ -969,13 +969,29 @@ const App: React.FC = () => {
                         <button 
                           onClick={handleGoogleLogin}
                           disabled={isLoadingFile}
-                          className="w-full max-w-xs bg-blue-600 hover:bg-blue-500 text-white py-2.5 rounded-lg text-xs font-bold tracking-wide uppercase transition cursor-pointer flex items-center justify-center gap-2 shadow-lg"
+                          className="w-full max-w-xs bg-blue-600 hover:bg-blue-500 text-white py-2.5 rounded-lg text-xs font-bold tracking-wide uppercase transition cursor-pointer flex items-center justify-center gap-2.5 shadow-lg"
                         >
-                          <svg className="w-4 h-4 fill-white" viewBox="0 0 24 24">
-                            <path d="M23.745 12.27c0-.70-.06-1.4-.19-2.07H12v3.9h6.69c-.29 1.5-.1.1.1. 1.14-.1. 2.63-1.07 3.53l3.29 2.55c1.93-1.78 3.03-4.39 3.03-7.39z"/>
-                            <path d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.29-2.55c-.91.61-2.08.98-3.41.98-3.14 0-5.81-2.12-6.76-4.97L.533 17.58C2.56 21.4 6.94 24 12 24z"/>
-                            <path d="M5.24 14.55c-.24-.72-.38-1.5-.38-2.3 0-.8.14-1.58.38-2.3L1.24 3.75C.45 5.4 0 7.22 0 9.1c0 1.88.45 3.7 1.24 5.35l4 9.1z"/>
-                            <path d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 6.94 0 2.56 2.6 1.24 5.35l4 9.1c.95-2.85 3.62-4.97 6.76-4.97z"/>
+                          <svg className="w-5 h-5 shrink-0" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+                            <defs>
+                              <radialGradient id="A" cx="-254.817" cy="705.837" gradientTransform="matrix(2.827,1.16322,-1.16322,2.827,1967.2161,-1760.7166)" gradientUnits="userSpaceOnUse" r="82.973">
+                                <stop offset="0" stopColor="#ffd24d"/>
+                                <stop offset="1" stopColor="#f6c338"/>
+                              </radialGradient>
+                              <radialGradient id="B" cx="-254.82" cy="705.836" gradientTransform="matrix(2.827,1.16322,-1.16322,2.827,1967.2161,-1760.7166)" gradientUnits="userSpaceOnUse" r="82.978">
+                                <stop offset="0" stopColor="#4387fd"/>
+                                <stop offset=".65" stopColor="#3078f0"/>
+                                <stop offset=".91" stopColor="#2b72ea"/>
+                                <stop offset="1" stopColor="#286ee6"/>
+                              </radialGradient>
+                            </defs>
+                            <g transform="matrix(.460432 0 0 .460432 57.509647 126.82041)">
+                              <path d="M-100.704-145.738l-24.2-41.9 45.3-78.5 24.2 41.9z" fill="#0da960"/>
+                              <path d="M-100.704-145.738l24.2-41.9h90.6l-24.2 41.9z" fill="url(#B)"/>
+                              <path d="M14.096-187.638h-48.4l-45.3-78.5h48.4z" fill="url(#A)"/>
+                              <path d="M-55.404-187.638h-21.1l10.5-18.3-34.7 60.2z" fill="#2d6fdd"/>
+                              <path d="M-34.304-187.638h48.4l-58.9-18.3z" fill="#e5b93c"/>
+                              <path d="M-66.004-205.938l10.6-18.3-24.2-41.9z" fill="#0c9b57"/>
+                            </g>
                           </svg>
                           Connect Google Drive
                         </button>
