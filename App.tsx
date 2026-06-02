@@ -6,7 +6,8 @@ import Histogram from './components/Histogram';
 import { Slider, ToolButton, IconButton } from './components/Controls';
 import Cropper from './components/Cropper';
 import ColorMixer from './components/ColorMixer';
-import { RotateCw, RotateCcw, FlipHorizontal, FlipVertical } from 'lucide-react';
+import { RotateCw, RotateCcw, FlipHorizontal, FlipVertical, Loader2 } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 
 // Modern Phosphor-style Icons (SVG)
 const Icons = {
@@ -57,6 +58,7 @@ const App: React.FC = () => {
   const [isLoadingFile, setIsLoadingFile] = useState(false);
   const [isComparing, setIsComparing] = useState(false);
   const [isRaw, setIsRaw] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   
   // Color Mixer State
   const [activeColorChannel, setActiveColorChannel] = useState<ColorChannel>('red');
@@ -234,11 +236,23 @@ const App: React.FC = () => {
 
   const handleDownload = async () => {
     if (!sourceImage) return;
-    const url = await generateResultUrl(sourceImage, imageState);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `snapweb-edit-${Date.now()}.jpg`;
-    a.click();
+    setIsExporting(true);
+    
+    // setTimeout allows the browser main thread to paint the export dialog/loader
+    // before executing heavy canvas/image manipulation tasks.
+    setTimeout(async () => {
+      try {
+        const url = await generateResultUrl(sourceImage, imageState);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `snapweb-edit-${Date.now()}.jpg`;
+        a.click();
+      } catch (err) {
+        console.error("Export failed", err);
+      } finally {
+        setIsExporting(false);
+      }
+    }, 850);
   };
 
   const handleReset = () => {
@@ -971,6 +985,26 @@ const App: React.FC = () => {
         </aside>
 
       </div>
+
+      {/* Floating Exporting/Download Loader */}
+      <AnimatePresence>
+        {isExporting && (
+          <motion.div
+            initial={{ opacity: 0, y: 15, x: "-50%" }}
+            animate={{ opacity: 1, y: 0, x: "-50%" }}
+            exit={{ opacity: 0, y: 15, x: "-50%" }}
+            transition={{ duration: 0.25, ease: "easeOut" }}
+            className="fixed bottom-6 left-1/2 z-[100] flex items-center gap-3.5 bg-neutral-900/95 border border-neutral-800 text-white px-5 py-3 rounded-full shadow-[0_8px_32px_rgba(0,0,0,0.5)] backdrop-blur-md"
+          >
+            <Loader2 className="w-4 h-4 text-white animate-spin shrink-0" />
+            <div className="flex flex-col leading-none">
+              <span className="text-[11px] font-bold tracking-wider uppercase text-neutral-100">Exporting Photo</span>
+              <span className="text-[9px] text-neutral-400 mt-1">Applying style filters, color grading & adjustments...</span>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
     </div>
   );
 };
