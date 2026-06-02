@@ -1263,11 +1263,11 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="flex flex-col h-screen w-full bg-black text-white overflow-hidden font-sans">
+    <div className="flex flex-col h-screen w-full bg-black text-white overflow-hidden font-sans select-none">
       
       {/* Top Navigation */}
       <header className="h-14 bg-black border-b border-neutral-900 flex justify-between items-center px-4 shrink-0 z-30">
-        <div className="flex items-center gap-6">
+        <div className="flex items-center gap-2 sm:gap-4 md:gap-6">
             <button 
               onClick={() => {
                 if (confirm("Close this image and return to homepage? Unsaved changes will be lost.")) {
@@ -1276,20 +1276,20 @@ const App: React.FC = () => {
                   setActiveMaskId(null);
                 }
               }}
-              className="text-neutral-400 hover:text-white flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider transition-colors mr-1 cursor-pointer bg-neutral-900 hover:bg-neutral-850 border border-neutral-800 px-2.5 py-1.5 rounded"
+              className="text-neutral-400 hover:text-white flex items-center gap-1 sm:gap-1.5 text-[10px] sm:text-[11px] font-bold uppercase tracking-wider transition-colors mr-1 cursor-pointer bg-neutral-900 hover:bg-neutral-850 border border-neutral-800 px-2 sm:px-2.5 py-1.5 rounded"
             >
-              <ArrowLeft className="w-3.5 h-3.5" />
-              Close
+              <ArrowLeft className="w-3 sm:w-3.5 h-3 sm:h-3.5" />
+              <span>Close</span>
             </button>
-            <div className="font-bold tracking-[0.25em] text-sm text-white">
+            <div className="font-bold tracking-[0.25em] text-xs sm:text-sm text-white hidden md:block">
                 SNAPWEB <span className="text-neutral-600 font-normal">PRO</span>
             </div>
-            <div className="h-6 w-px bg-neutral-800"></div>
-            <div className="flex gap-2">
-                <ToolButton onClick={() => fileInputRef.current?.click()} title="Open Image">
-                    <div className="flex items-center gap-2 text-xs">
-                        <span className="w-4 h-4">{Icons.Upload}</span>
-                        OPEN
+            <div className="h-6 w-px bg-neutral-800 hidden md:block"></div>
+            <div className="flex gap-1.5 sm:gap-2">
+                <ToolButton onClick={() => fileInputRef.current?.click()} className="px-2.5 sm:px-4 py-1.5 sm:py-2" title="Open Image">
+                    <div className="flex items-center gap-1 sm:gap-2 text-[10px] sm:text-xs">
+                        <span className="w-3.5 h-3.5 sm:w-4 sm:h-4">{Icons.Upload}</span>
+                        <span>OPEN</span>
                     </div>
                 </ToolButton>
                 <input 
@@ -1301,27 +1301,28 @@ const App: React.FC = () => {
                 />
                 
                 {sourceImage && (
-                    <ToolButton onClick={() => setIsCropMode(true)} title="Crop Image">
-                        <div className="flex items-center gap-2 text-xs">
-                            <span className="w-4 h-4">{Icons.Crop}</span>
-                            CROP
+                    <ToolButton onClick={() => setIsCropMode(true)} className="px-2.5 sm:px-4 py-1.5 sm:py-2" title="Crop Image">
+                        <div className="flex items-center gap-1 sm:gap-2 text-[10px] sm:text-xs">
+                            <span className="w-3.5 h-3.5 sm:w-4 sm:h-4">{Icons.Crop}</span>
+                            <span>CROP</span>
                         </div>
                     </ToolButton>
                 )}
             </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2">
              {isRaw && (
-                 <div className="px-2 py-0.5 rounded text-[10px] font-bold bg-neutral-800 text-yellow-500 border border-neutral-700 mr-2">
-                     RAW MODE
+                 <div className="px-1.5 sm:px-2 py-0.5 rounded text-[8px] sm:text-[10px] font-bold bg-neutral-800 text-yellow-500 border border-neutral-700 mr-0.5 sm:mr-2 whitespace-nowrap">
+                     RAW
                  </div>
              )}
              {/* Show warning if masking is active */}
              {activeMaskId && (
-                 <div className="flex items-center gap-2 mr-4 animate-pulse text-red-500 text-xs font-bold uppercase tracking-wider border border-red-900/50 bg-red-900/10 px-3 py-1 rounded">
-                    <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-                    Masking Mode Active
+                 <div className="flex items-center gap-1 sm:gap-2 mr-1 sm:mr-4 animate-pulse text-red-500 text-[9px] sm:text-xs font-bold uppercase tracking-wider border border-red-900/50 bg-red-900/10 px-2 sm:px-3 py-1 rounded">
+                    <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-red-500 rounded-full"></div>
+                    <span className="hidden sm:inline">Masking Mode Active</span>
+                    <span className="inline sm:hidden">Masking</span>
                  </div>
              )}
 
@@ -1330,30 +1331,32 @@ const App: React.FC = () => {
                     icon={Icons.Undo} 
                     onClick={handleReset} 
                     title="Reset All"
-                    className="hover:bg-neutral-900"
+                    className="hover:bg-neutral-900 p-1.5 sm:p-2"
                  />
              )}
              <button 
                 onMouseDown={() => setIsComparing(true)}
                 onMouseUp={() => setIsComparing(false)}
                 onMouseLeave={() => setIsComparing(false)}
-                className="p-2 text-neutral-400 hover:text-white transition-colors"
+                onTouchStart={() => setIsComparing(true)}
+                onTouchEnd={() => setIsComparing(false)}
+                className="p-1.5 sm:p-2 text-neutral-400 hover:text-white transition-colors"
                 title="Hold to Compare"
              >
-                 <div className="w-5 h-5">{Icons.Compare}</div>
+                 <div className="w-4 h-4 sm:w-5 sm:h-5">{Icons.Compare}</div>
              </button>
-             <div className="h-6 w-px bg-neutral-800 mx-2"></div>
-             <button onClick={handleDownload} className="bg-white text-black px-5 py-1.5 rounded text-xs font-bold tracking-wider hover:bg-neutral-200 transition flex items-center gap-2">
-                EXPORT
+             <div className="h-6 w-px bg-neutral-800 mx-1 sm:mx-2"></div>
+             <button onClick={handleDownload} className="bg-white text-black px-3.5 sm:px-5 py-1.5 rounded text-[10px] sm:text-xs font-bold tracking-wider hover:bg-neutral-200 transition flex items-center gap-1 sm:gap-2">
+                <span>EXPORT</span>
              </button>
         </div>
       </header>
 
       {/* Main Workspace */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
         
         {/* Center: Canvas */}
-        <main className="flex-1 bg-[#0a0a0a] relative flex items-center justify-center p-8 select-none overflow-hidden">
+        <main className="flex-1 bg-[#0a0a0a] relative flex items-center justify-center p-3 sm:p-6 md:p-8 select-none overflow-hidden min-h-0 min-w-0">
              {isComparing && (
                 <div className="absolute top-8 left-8 bg-white text-black px-3 py-1 rounded text-xs font-bold uppercase tracking-widest z-50 pointer-events-none shadow-xl">
                     Original
@@ -1398,7 +1401,7 @@ const App: React.FC = () => {
             >
                 <canvas 
                     ref={canvasRef} 
-                    className="max-w-full max-h-[calc(100vh-8rem)] object-contain block pointer-events-none transition-transform duration-75"
+                    className="max-w-full max-h-[calc(100vh-27rem)] md:max-h-[calc(100vh-8rem)] object-contain block pointer-events-none transition-transform duration-75"
                     style={{ 
                         opacity: isProcessing || isLoadingFile ? 0.8 : 1,
                         transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` 
@@ -1496,7 +1499,7 @@ const App: React.FC = () => {
         </main>
 
         {/* Right: Sidebar Controls */}
-        <aside className="w-[320px] bg-[#050505] border-l border-neutral-900 flex flex-col shrink-0 z-20">
+        <aside className="w-full md:w-[320px] h-[340px] md:h-auto bg-[#050505] border-t md:border-t-0 md:border-l border-neutral-900 flex flex-col shrink-0 z-20 shadow-[0_-4px_24px_rgba(0,0,0,0.6)] md:shadow-none">
             
             {/* Histogram */}
             <div className="p-4 border-b border-neutral-900 bg-black/50">
