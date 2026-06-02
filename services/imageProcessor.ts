@@ -502,6 +502,14 @@ export const processImage = async (
   const dehaze = state.dehaze / 100;
   const grainAmount = state.grain * 0.5;
 
+  // --- Pre-calc RAW Constants ---
+  const rawExposureMultiplier = state.rawExposureEV !== undefined ? Math.pow(2, state.rawExposureEV) : 1;
+  const rawTempAdjust = state.rawTemperature !== undefined ? (state.rawTemperature / 100) : 0;
+  const rawTintAdjust = state.rawTint !== undefined ? (state.rawTint / 100) : 0;
+  const rawHighlightsRecoveryFactor = state.rawHighlights !== undefined ? (state.rawHighlights / 100) : 0;
+  const rawShadowsLiftFactor = state.rawShadows !== undefined ? (state.rawShadows / 100) : 0;
+  const rawProfile = state.rawProfile || 'Standard';
+
   // Precompute Global Color Grading definitions
   const isColorGradingActive = Object.values(state.colorGrade).some(c => c.hue !== 0 || c.saturation !== 0 || c.luminance !== 0);
   const globalChannelDefs = CHANNELS.map(key => ({
@@ -516,6 +524,120 @@ export const processImage = async (
     let r = data[i];
     let g = data[i + 1];
     let b = data[i + 2];
+
+    // 0. RAW DEVELOPMENT STAGE
+    // a. Exposure EV
+    if (rawExposureMultiplier !== 1) {
+        r *= rawExposureMultiplier;
+        g *= rawExposureMultiplier;
+        b *= rawExposureMultiplier;
+    }
+    
+    // b. RAW Temperature & Tint
+    if (rawTempAdjust !== 0 || rawTintAdjust !== 0) {
+        r *= (1 + rawTempAdjust * 0.25);
+        b *= (1 - rawTempAdjust * 0.25);
+        g *= (1 - rawTintAdjust * 0.20);
+        r *= (1 + rawTintAdjust * 0.05);
+        b *= (1 + rawTintAdjust * 0.05);
+    }
+    
+    // c. RAW Highlights Recovery
+    if (rawHighlightsRecoveryFactor !== 0) {
+        const threshold = 180;
+        if (r > threshold || g > threshold || b > threshold) {
+            const decay = Math.max(0, rawHighlightsRecoveryFactor);
+            const boost = Math.min(0, rawHighlightsRecoveryFactor);
+            
+            if (decay > 0) {
+                if (r > threshold) r = threshold + (r - threshold) * (1 - decay * 0.65);
+                if (g > threshold) g = threshold + (g - threshold) * (1 - decay * 0.65);
+                if (b > threshold) b = threshold + (b - threshold) * (1 - decay * 0.65);
+            } else if (boost < 0) {
+                const bFactor = 1 - boost * 0.35;
+                if (r > threshold) r = Math.min(255, threshold + (r - threshold) * bFactor);
+                if (g > threshold) g = Math.min(255, threshold + (g - threshold) * bFactor);
+                if (b > threshold) b = Math.min(255, threshold + (b - threshold) * bFactor);
+            }
+        }
+    }
+    
+    // d. RAW Shadows Recovery
+    if (rawShadowsLiftFactor !== 0) {
+        const maxVal = 100;
+        const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+        if (lum < maxVal) {
+            const shadowMask = (maxVal - lum) / maxVal;
+            const lift = rawShadowsLiftFactor * 0.65 * shadowMask;
+            r += lift;
+            g += lift;
+            b += lift;
+        }
+    }
+    
+    // e. RAW Sensor Camera Profile
+    if (rawProfile !== 'Standard') {
+        if (rawProfile === 'Vivid') {
+            const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+            r = 128 + (r - 128) * 1.15;
+            g = 128 + (g - 128) * 1.15;
+            b = 128 + (b - 128) * 1.15;
+            r = lum + (r - lum) * 1.25;
+            g = lum + (g - lum) * 1.25;
+            b = lum + (b - lum) * 1.25;
+        } else if (rawProfile === 'Landscape') {
+            const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+            r = 128 + (r - 128) * 1.05;
+            g = 128 + (g - 128) * 1.05;
+            b = 128 + (b - 128) * 1.05;
+            r = lum + (r - lum) * 1.1;
+            g = lum + (g - lum) * 1.35;
+            b = lum + (b - lum) * 1.35;
+        } else if (rawProfile === 'Portrait') {
+            const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+            r = 128 + (r - 128) * 0.95;
+            g = 128 + (g - 128) * 0.95;
+            b = 128 + (b - 128) * 0.95;
+            r = lum + (r - lum) * 1.05;
+            g = lum + (g - lum) * 1.0;
+            b = lum + (b - lum) * 0.92;
+        } else if (rawProfile === 'Monochrome') {
+            const mono = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+            const contrastedMono = clamp(128 + (mono - 128) * 1.12, 0, 255);
+            r = contrastedMono;
+            g = contrastedMono;
+            b = contrastedMono;
+        } else if (rawProfile === 'Sunny') {
+            // Warm golden daylight
+            r = r * 1.05;
+            b = b * 0.95;
+        } else if (rawProfile === 'Cloudy') {
+            // Extra warming correction for overcast sky
+            r = r * 1.14;
+            g = g * 1.02;
+            b = b * 0.90;
+        } else if (rawProfile === 'Shade') {
+            // High compensation warming for blue open shadow
+            r = r * 1.22;
+            g = g * 1.04;
+            b = b * 0.82;
+        } else if (rawProfile === 'Tungsten') {
+            // Cool-down correction for yellow incandescent bulbs
+            r = r * 0.76;
+            g = g * 0.94;
+            b = b * 1.28;
+        } else if (rawProfile === 'Fluorescent') {
+            // Tint and magenta correction for gas discharge tubes
+            r = r * 1.08;
+            g = g * 0.88;
+            b = b * 1.14;
+        } else if (rawProfile === 'Flash') {
+            // Neutral gold correction for flash skin tones
+            r = r * 1.06;
+            g = g * 1.00;
+            b = b * 0.96;
+        }
+    }
 
     // A. GLOBAL ADJUSTMENTS
     [r, g, b] = applySinglePixel(r, g, b, {

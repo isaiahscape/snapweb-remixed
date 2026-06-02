@@ -52,6 +52,14 @@ export const DEFAULT_MASK_SETTINGS: MaskSettings = {
 };
 
 export interface ImageState {
+  // RAW Developer Adjustments (Only active for RAW images)
+  rawTemperature: number; // -100 to 100
+  rawTint: number; // -100 to 100
+  rawExposureEV: number; // -3.0 to 3.0
+  rawHighlights: number; // -100 to 100
+  rawShadows: number; // -100 to 100
+  rawProfile: 'Standard' | 'Vivid' | 'Landscape' | 'Portrait' | 'Monochrome' | 'Sunny' | 'Cloudy' | 'Shade' | 'Tungsten' | 'Fluorescent' | 'Flash';
+
   // Light & Color
   brightness: number; // -100 to 100
   contrast: number; // -100 to 100
@@ -85,6 +93,13 @@ export interface ImageState {
 }
 
 export const DEFAULT_IMAGE_STATE: ImageState = {
+  rawTemperature: 0,
+  rawTint: 0,
+  rawExposureEV: 0,
+  rawHighlights: 0,
+  rawShadows: 0,
+  rawProfile: 'Standard',
+
   brightness: 0,
   contrast: 0,
   saturation: 0,

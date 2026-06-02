@@ -5,11 +5,15 @@ interface SliderProps {
   value: number;
   min: number;
   max: number;
+  step?: number;
   onChange: (val: number) => void;
   onReset?: () => void;
 }
 
-export const Slider: React.FC<SliderProps> = ({ label, value, min, max, onChange, onReset }) => {
+export const Slider: React.FC<SliderProps> = ({ label, value, min, max, step = 1, onChange, onReset }) => {
+  const isFloat = step % 1 !== 0 || min % 1 !== 0 || max % 1 !== 0 || value % 1 !== 0;
+  const displayVal = isFloat ? value.toFixed(2) : value;
+
   return (
     <div className="group py-3">
       <div className="flex justify-between items-center mb-2 text-[11px] font-semibold tracking-widest uppercase text-neutral-400 group-hover:text-white transition-colors">
@@ -20,12 +24,13 @@ export const Slider: React.FC<SliderProps> = ({ label, value, min, max, onChange
         >
             {label}
         </span>
-        <span className="tabular-nums text-white">{value > 0 ? `+${value}` : value}</span>
+        <span className="tabular-nums text-white">{value > 0 ? `+${displayVal}` : displayVal}</span>
       </div>
       <input
         type="range"
         min={min}
         max={max}
+        step={step}
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
         className="w-full bg-transparent"

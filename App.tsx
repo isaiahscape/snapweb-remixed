@@ -1508,6 +1508,139 @@ const App: React.FC = () => {
 
             {/* Tools */}
             <div className="flex-1 overflow-y-auto custom-scrollbar">
+
+                {/* CAMERA RAW DEVELOPER SECTION */}
+                <SidebarSection title="RAW Options" defaultOpen={isRaw}>
+                    {isRaw ? (
+                        <div className="space-y-4">
+                            <div className="bg-amber-500/10 border border-amber-500/20 rounded p-2.5 text-center">
+                                <span className="inline-flex items-center gap-1.5 text-[9px] font-bold text-amber-500 uppercase tracking-widest leading-none">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                                    12-Bit Camera Sensor Active
+                                </span>
+                                <p className="text-[9px] text-neutral-400 mt-1 leading-relaxed">
+                                    Adjusting non-destructive Bayer filter metadata values directly on sensor matrix.
+                                </p>
+                            </div>
+
+                            {/* Camera Profile */}
+                            <div className="py-2 space-y-3">
+                                <div>
+                                    <label className="text-[9px] font-bold uppercase tracking-widest text-neutral-400 block mb-1.5 flex justify-between items-center">
+                                        <span>Creative Profile</span>
+                                        {['Standard', 'Vivid', 'Landscape', 'Portrait', 'Monochrome'].includes(imageState.rawProfile) && (
+                                            <span className="text-amber-500 font-mono tracking-normal uppercase bg-amber-500/10 px-1 py-0.5 rounded text-[8px]">{imageState.rawProfile}</span>
+                                        )}
+                                    </label>
+                                    <div className="grid grid-cols-5 gap-1 bg-neutral-900 border border-neutral-800 p-1 rounded">
+                                        {(['Standard', 'Vivid', 'Landscape', 'Portrait', 'Monochrome'] as const).map(prof => (
+                                            <button 
+                                                key={prof}
+                                                onClick={() => updateState('rawProfile', prof)}
+                                                className={`py-1 text-[8px] font-bold uppercase rounded border transition-all ${
+                                                    imageState.rawProfile === prof 
+                                                        ? 'bg-amber-500 border-amber-500 text-black' 
+                                                        : 'bg-transparent border-transparent text-neutral-400 hover:text-white hover:bg-neutral-80/50 cursor-pointer'
+                                                }`}
+                                                title={`${prof} Camera rendering profile`}
+                                            >
+                                                {prof.slice(0, 4)}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="text-[9px] font-bold uppercase tracking-widest text-neutral-400 block mb-1.5 flex justify-between items-center">
+                                        <span>White Balance Profile</span>
+                                        {['Sunny', 'Cloudy', 'Shade', 'Tungsten', 'Fluorescent', 'Flash'].includes(imageState.rawProfile) && (
+                                            <span className="text-amber-500 font-mono tracking-normal uppercase bg-amber-500/10 px-1 py-0.5 rounded text-[8px]">{imageState.rawProfile}</span>
+                                        )}
+                                    </label>
+                                    <div className="grid grid-cols-3 gap-1 bg-neutral-900 border border-neutral-800 p-1 rounded">
+                                        {(['Sunny', 'Cloudy', 'Shade', 'Tungsten', 'Fluorescent', 'Flash'] as const).map(prof => (
+                                            <button 
+                                                key={prof}
+                                                onClick={() => updateState('rawProfile', prof)}
+                                                className={`py-1.5 text-[8.5px] font-bold uppercase rounded border transition-all ${
+                                                    imageState.rawProfile === prof 
+                                                        ? 'bg-amber-500 border-amber-500 text-black' 
+                                                        : 'bg-transparent border-transparent text-neutral-400 hover:text-white hover:bg-neutral-800/50 cursor-pointer'
+                                                }`}
+                                                title={`${prof} White Balance profile`}
+                                            >
+                                                {prof}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Exposure Baseline EV */}
+                            <Slider 
+                                label="Exposure Baseline (EV)" 
+                                min={-3} 
+                                max={3} 
+                                step={0.05} 
+                                value={imageState.rawExposureEV} 
+                                onChange={(v) => updateState('rawExposureEV', v)} 
+                                onReset={() => updateState('rawExposureEV', 0)} 
+                            />
+
+                            {/* Sensor White Balance Temp */}
+                            <Slider 
+                                label="Sensor Temperature" 
+                                min={-100} 
+                                max={100} 
+                                step={1} 
+                                value={imageState.rawTemperature} 
+                                onChange={(v) => updateState('rawTemperature', v)}  
+                                onReset={() => updateState('rawTemperature', 0)} 
+                            />
+
+                            {/* Sensor Tint */}
+                            <Slider 
+                                label="Sensor Tint" 
+                                min={-100} 
+                                max={100} 
+                                step={1} 
+                                value={imageState.rawTint} 
+                                onChange={(v) => updateState('rawTint', v)} 
+                                onReset={() => updateState('rawTint', 0)} 
+                            />
+
+                            {/* Sensor Highlights Recovery */}
+                            <Slider 
+                                label="Highlights Recovery" 
+                                min={-100} 
+                                max={100} 
+                                step={1} 
+                                value={imageState.rawHighlights} 
+                                onChange={(v) => updateState('rawHighlights', v)} 
+                                onReset={() => updateState('rawHighlights', 0)} 
+                            />
+
+                            {/* Sensor Shadows Recovery */}
+                            <Slider 
+                                label="Shadow Detail Lift" 
+                                min={-100} 
+                                max={100} 
+                                step={1} 
+                                value={imageState.rawShadows} 
+                                onChange={(v) => updateState('rawShadows', v)} 
+                                onReset={() => updateState('rawShadows', 0)} 
+                            />
+                        </div>
+                    ) : (
+                        <div className="flex flex-col items-center justify-center p-3 text-center border border-dashed border-neutral-850 rounded bg-black/20 my-2">
+                            <span className="text-sm mb-1.5 opacity-80">📷</span>
+                            <span className="text-[10px] font-bold uppercase text-neutral-400 tracking-wider">RAW Developer Locked</span>
+                            <p className="text-[9px] text-neutral-500 mt-1.5 leading-relaxed max-w-[220px]">
+                                Camera RAW developer adjusts native 12-bit sensor data. Load a RAW format (such as .dng, .cr2, .nef, .arw) to unlock non-destructive Bayer development controls.
+                            </p>
+                        </div>
+                    )}
+                </SidebarSection>
                 
                 {/* SELECTIVE EDITING SECTION */}
                 <SidebarSection title="Selective Edits (Masks)" defaultOpen={!!activeMaskId}>
