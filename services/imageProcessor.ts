@@ -743,7 +743,7 @@ export const processImage = async (
   return ctx.getImageData(0, 0, canvas.width, canvas.height);
 };
 
-export const generateResultUrl = async (source: HTMLImageElement, state: ImageState): Promise<string> => {
+export const generateResultUrl = async (source: HTMLImageElement, state: ImageState, format: 'jpeg' | 'png' = 'jpeg', quality: number = 0.95): Promise<string> => {
     const imageData = await processImage(source, state, 'full');
     const canvas = document.createElement('canvas');
     canvas.width = imageData.width;
@@ -751,7 +751,7 @@ export const generateResultUrl = async (source: HTMLImageElement, state: ImageSt
     const ctx = canvas.getContext('2d');
     if (ctx) {
         ctx.putImageData(imageData, 0, 0);
-        return canvas.toDataURL('image/jpeg', 0.95);
+        return canvas.toDataURL(format === 'jpeg' ? 'image/jpeg' : 'image/png', format === 'jpeg' ? quality : undefined);
     }
     return '';
 };

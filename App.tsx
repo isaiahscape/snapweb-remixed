@@ -6,7 +6,7 @@ import Histogram from './components/Histogram';
 import { Slider, ToolButton, IconButton } from './components/Controls';
 import Cropper from './components/Cropper';
 import ColorMixer from './components/ColorMixer';
-import { RotateCw, RotateCcw, FlipHorizontal, FlipVertical, Loader2, FolderOpen, Cloud, LogOut, RefreshCw, Globe, Settings2, ArrowLeft, AlertCircle, ZoomIn, ZoomOut, Maximize2, Upload as LucideUpload } from 'lucide-react';
+import { RotateCw, RotateCcw, FlipHorizontal, FlipVertical, Loader2, FolderOpen, Cloud, LogOut, RefreshCw, Globe, Settings2, ArrowLeft, AlertCircle, ZoomIn, ZoomOut, Maximize2, Upload as LucideUpload, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 // Modern Phosphor-style Icons (SVG)
@@ -59,6 +59,9 @@ const App: React.FC = () => {
   const [isComparing, setIsComparing] = useState(false);
   const [isRaw, setIsRaw] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportFormat, setExportFormat] = useState<'jpeg' | 'png'>('jpeg');
+  const [exportQuality, setExportQuality] = useState<number>(0.95);
   
   // Color Mixer State
   const [activeColorChannel, setActiveColorChannel] = useState<ColorChannel>('red');
@@ -632,18 +635,19 @@ const App: React.FC = () => {
     }
   };
 
-  const handleDownload = async () => {
+  const handleDownload = async (format: 'jpeg' | 'png' = exportFormat, quality: number = exportQuality) => {
     if (!sourceImage) return;
     setIsExporting(true);
+    setShowExportModal(false);
     
     // setTimeout allows the browser main thread to paint the export dialog/loader
     // before executing heavy canvas/image manipulation tasks.
     setTimeout(async () => {
       try {
-        const url = await generateResultUrl(sourceImage, imageState);
+        const url = await generateResultUrl(sourceImage, imageState, format, quality);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `snapweb-edit-${Date.now()}.jpg`;
+        a.download = `snapweb-edit-${Date.now()}.${format === 'jpeg' ? 'jpg' : 'png'}`;
         a.click();
       } catch (err) {
         console.error("Export failed", err);
@@ -1266,8 +1270,8 @@ const App: React.FC = () => {
     <div className="flex flex-col h-screen w-full bg-black text-white overflow-hidden font-sans select-none">
       
       {/* Top Navigation */}
-      <header className="h-14 bg-black border-b border-neutral-900 flex justify-between items-center px-4 shrink-0 z-30">
-        <div className="flex items-center gap-2 sm:gap-4 md:gap-6">
+      <header className="h-14 bg-black border-b border-neutral-900 flex justify-between items-center px-2 sm:px-4 shrink-0 z-30">
+        <div className="flex items-center gap-1 sm:gap-4 md:gap-6">
             <button 
               onClick={() => {
                 if (confirm("Close this image and return to homepage? Unsaved changes will be lost.")) {
@@ -1276,20 +1280,21 @@ const App: React.FC = () => {
                   setActiveMaskId(null);
                 }
               }}
-              className="text-neutral-400 hover:text-white flex items-center gap-1 sm:gap-1.5 text-[10px] sm:text-[11px] font-bold uppercase tracking-wider transition-colors mr-1 cursor-pointer bg-neutral-900 hover:bg-neutral-850 border border-neutral-800 px-2 sm:px-2.5 py-1.5 rounded"
+              className="text-neutral-400 hover:text-white flex items-center gap-1 sm:gap-1.5 text-[10px] sm:text-[11px] font-bold uppercase tracking-wider transition-colors mr-0.5 sm:mr-1 cursor-pointer bg-neutral-900 hover:bg-neutral-850 border border-neutral-800 px-1.5 sm:px-2.5 py-1.5 rounded"
+              title="Close Image and Return"
             >
-              <ArrowLeft className="w-3 sm:w-3.5 h-3 sm:h-3.5" />
-              <span>Close</span>
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span className="hidden min-[450px]:inline">Close</span>
             </button>
             <div className="font-bold tracking-[0.25em] text-xs sm:text-sm text-white hidden md:block">
                 SNAPWEB <span className="text-neutral-600 font-normal">PRO</span>
             </div>
             <div className="h-6 w-px bg-neutral-800 hidden md:block"></div>
-            <div className="flex gap-1.5 sm:gap-2">
-                <ToolButton onClick={() => fileInputRef.current?.click()} className="px-2.5 sm:px-4 py-1.5 sm:py-2" title="Open Image">
+            <div className="flex gap-1 sm:gap-2">
+                <ToolButton onClick={() => fileInputRef.current?.click()} className="px-2 sm:px-4 py-1.5" title="Open Image">
                     <div className="flex items-center gap-1 sm:gap-2 text-[10px] sm:text-xs">
                         <span className="w-3.5 h-3.5 sm:w-4 sm:h-4">{Icons.Upload}</span>
-                        <span>OPEN</span>
+                        <span className="hidden min-[480px]:inline">OPEN</span>
                     </div>
                 </ToolButton>
                 <input 
@@ -1301,25 +1306,25 @@ const App: React.FC = () => {
                 />
                 
                 {sourceImage && (
-                    <ToolButton onClick={() => setIsCropMode(true)} className="px-2.5 sm:px-4 py-1.5 sm:py-2" title="Crop Image">
+                    <ToolButton onClick={() => setIsCropMode(true)} className="px-2 sm:px-4 py-1.5" title="Crop Image">
                         <div className="flex items-center gap-1 sm:gap-2 text-[10px] sm:text-xs">
                             <span className="w-3.5 h-3.5 sm:w-4 sm:h-4">{Icons.Crop}</span>
-                            <span>CROP</span>
+                            <span className="hidden min-[540px]:inline">CROP</span>
                         </div>
                     </ToolButton>
                 )}
             </div>
         </div>
 
-        <div className="flex items-center gap-1.5 sm:gap-2">
+        <div className="flex items-center gap-1 sm:gap-2">
              {isRaw && (
-                 <div className="px-1.5 sm:px-2 py-0.5 rounded text-[8px] sm:text-[10px] font-bold bg-neutral-800 text-yellow-500 border border-neutral-700 mr-0.5 sm:mr-2 whitespace-nowrap">
+                 <div className="px-1.5 py-0.5 rounded text-[8px] sm:text-[10px] font-bold bg-neutral-800 text-yellow-500 border border-neutral-700 mr-0.5 sm:mr-2 whitespace-nowrap">
                      RAW
                  </div>
              )}
              {/* Show warning if masking is active */}
              {activeMaskId && (
-                 <div className="flex items-center gap-1 sm:gap-2 mr-1 sm:mr-4 animate-pulse text-red-500 text-[9px] sm:text-xs font-bold uppercase tracking-wider border border-red-900/50 bg-red-900/10 px-2 sm:px-3 py-1 rounded">
+                 <div className="flex items-center gap-1 sm:gap-2 mr-0.5 sm:mr-4 animate-pulse text-red-500 text-[9px] sm:text-xs font-bold uppercase tracking-wider border border-red-900/50 bg-red-900/10 px-1.5 sm:px-3 py-1 rounded">
                     <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-red-500 rounded-full"></div>
                     <span className="hidden sm:inline">Masking Mode Active</span>
                     <span className="inline sm:hidden">Masking</span>
@@ -1332,7 +1337,7 @@ const App: React.FC = () => {
                     onClick={handleReset} 
                     title="Reset All"
                     className="hover:bg-neutral-900 p-1.5 sm:p-2"
-                 />
+                  />
              )}
              <button 
                 onMouseDown={() => setIsComparing(true)}
@@ -1345,10 +1350,11 @@ const App: React.FC = () => {
              >
                  <div className="w-4 h-4 sm:w-5 sm:h-5">{Icons.Compare}</div>
              </button>
-             <div className="h-6 w-px bg-neutral-800 mx-1 sm:mx-2"></div>
-             <button onClick={handleDownload} className="bg-white text-black px-3.5 sm:px-5 py-1.5 rounded text-[10px] sm:text-xs font-bold tracking-wider hover:bg-neutral-200 transition flex items-center gap-1 sm:gap-2">
-                <span>EXPORT</span>
-             </button>
+             <div className="h-6 w-px bg-neutral-800 mx-0.5 sm:mx-2"></div>
+              <button onClick={() => setShowExportModal(true)} className="bg-white text-black px-2 sm:px-5 py-1.5 rounded text-[10px] sm:text-xs font-bold tracking-wider hover:bg-neutral-200 transition flex items-center gap-1 sm:gap-2" title="Export Image">
+                <div className="w-3.5 h-3.5 sm:w-4 sm:h-4">{Icons.Download}</div>
+                <span className="hidden min-[380px]:inline">EXPORT</span>
+              </button>
         </div>
       </header>
 
@@ -1875,7 +1881,7 @@ const App: React.FC = () => {
 
       </div>
 
-      {/* Floating Exporting/Download Loader */}
+      {/* Floating Exporting/Download Loader & Export Settings Modal */}
       <AnimatePresence>
         {isExporting && (
           <motion.div
@@ -1891,6 +1897,161 @@ const App: React.FC = () => {
               <span className="text-[9px] text-neutral-400 mt-1">Applying style filters, color grading & adjustments...</span>
             </div>
           </motion.div>
+        )}
+
+        {showExportModal && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+            {/* Backdrop */}
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowExportModal(false)}
+              className="absolute inset-0 bg-black/75 backdrop-blur-sm cursor-pointer"
+            />
+            
+            {/* Modal Body */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+              className="relative bg-neutral-900 border border-neutral-800 rounded-2xl w-full max-w-sm overflow-hidden z-10 shadow-2xl text-left"
+            >
+              <div className="p-5 border-b border-neutral-800 flex justify-between items-center bg-black/20">
+                <div className="flex items-center gap-2">
+                  <span className="text-neutral-400 shrink-0">
+                    <svg className="w-4 h-4 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="square" strokeLinejoin="miter" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                  </span>
+                  <h3 className="text-sm font-bold tracking-wider uppercase text-white">Export Options</h3>
+                </div>
+                <button 
+                  onClick={() => setShowExportModal(false)}
+                  className="p-1.5 rounded bg-neutral-800 hover:bg-neutral-750 text-neutral-400 hover:text-white transition-colors cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              
+              <div className="p-5 space-y-6">
+                {/* Format selection */}
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-neutral-400 block">
+                    File Format
+                  </label>
+                  <div className="grid grid-cols-2 gap-1 bg-black p-1 rounded-lg border border-neutral-850">
+                    <button 
+                      type="button"
+                      onClick={() => setExportFormat('jpeg')}
+                      className={`py-2 text-[11px] font-bold uppercase rounded-md transition-all ${
+                        exportFormat === 'jpeg'
+                          ? 'bg-neutral-850 text-white shadow-sm'
+                          : 'bg-transparent text-neutral-400 hover:text-white hover:bg-neutral-950/20 cursor-pointer'
+                      }`}
+                    >
+                      JPEG (Standard)
+                    </button>
+                    <button 
+                      type="button"
+                      onClick={() => setExportFormat('png')}
+                      className={`py-2 text-[11px] font-bold uppercase rounded-md transition-all ${
+                        exportFormat === 'png'
+                          ? 'bg-neutral-850 text-white shadow-sm'
+                          : 'bg-transparent text-neutral-400 hover:text-white hover:bg-neutral-950/20 cursor-pointer'
+                      }`}
+                    >
+                      PNG (Lossless)
+                    </button>
+                  </div>
+                </div>
+
+                {/* Quality selection (only for JPG) */}
+                {exportFormat === 'jpeg' ? (
+                  <div className="space-y-4">
+                    <div className="flex justify-between items-center text-[10px] font-bold uppercase tracking-widest text-neutral-400">
+                      <span>Compression Quality</span>
+                      <span className="font-mono text-amber-500 font-bold bg-amber-500/10 px-1.5 py-0.5 rounded">
+                        {Math.round(exportQuality * 100)}%
+                      </span>
+                    </div>
+                    
+                    <div className="space-y-2.5">
+                      <input 
+                        type="range"
+                        min="0.10"
+                        max="1.00"
+                        step="0.05"
+                        value={exportQuality}
+                        onChange={(e) => setExportQuality(parseFloat(e.target.value))}
+                        className="w-full h-1 bg-black rounded-lg appearance-none cursor-pointer accent-white"
+                      />
+                      
+                      {/* Detailed guidance dynamically displayed */}
+                      <div className="bg-neutral-950 p-2.5 rounded-lg border border-neutral-850 text-[10px] text-neutral-450 leading-relaxed">
+                        {exportQuality >= 0.91 ? (
+                          <div className="flex items-center gap-1.5 text-emerald-500 font-medium">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                            <span>Ultra High Resolution (Large file size)</span>
+                          </div>
+                        ) : exportQuality >= 0.76 ? (
+                          <div className="flex items-center gap-1.5 text-amber-500 font-medium">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                            <span>Optimized Web High (Excellent balance)</span>
+                          </div>
+                        ) : exportQuality >= 0.51 ? (
+                          <div className="flex items-center gap-1.5 text-neutral-300 font-medium">
+                            <span className="w-1.5 h-1.5 rounded-full bg-neutral-400" />
+                            <span>Standard / High Compression (Web friendly)</span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1.5 text-rose-500 font-medium">
+                            <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
+                            <span>Draft Quality (Very high compression)</span>
+                          </div>
+                        )}
+                        <p className="mt-1.5 text-neutral-500 text-[9px] leading-relaxed">
+                          JPEG compression optimizes photographs by gently discarding imperceptible color differences. Recommended for sharing.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-neutral-950 p-3 rounded-lg border border-neutral-850 text-[9.5px] leading-relaxed space-y-1.5 text-left">
+                    <div className="flex items-center gap-1.5 text-emerald-500 font-bold uppercase tracking-wider">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                      <span>Lossless PNG Active</span>
+                    </div>
+                    <p className="text-neutral-400 text-[10px]">
+                      PNG ensures mathematically perfect reproduction of edited pixels containing zero artifacts.
+                    </p>
+                    <p className="text-neutral-500 text-[9px]">
+                      Ideal for editing text, layouts, high contrast vector lines, or maintaining transparency. Resulting file sizes are typically larger.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Action buttons footer */}
+              <div className="p-5 border-t border-neutral-800 bg-black/10 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowExportModal(false)}
+                  className="flex-1 py-2.5 rounded-xl border border-neutral-800 text-[11px] font-bold uppercase text-neutral-400 hover:text-white hover:bg-neutral-850 transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDownload(exportFormat, exportQuality)}
+                  className="flex-1 py-2.5 rounded-xl bg-white hover:bg-neutral-200 text-black text-[11px] font-bold uppercase tracking-wider transition-colors cursor-pointer"
+                >
+                  Download
+                </button>
+              </div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
 
