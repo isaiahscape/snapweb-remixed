@@ -1257,6 +1257,9 @@ const App: React.FC = () => {
           <p className="leading-relaxed">
             Recreated by <a href="https://isaiahthings.me" target="_blank" rel="noopener noreferrer" className="text-neutral-200 hover:text-blue-400 font-medium transition-colors underline decoration-neutral-800 hover:decoration-blue-400">Leonardo (@isaiahscape)</a>, generated initially with Google AI Studio by <a href="https://www.reddit.com/user/BetterAtPS" target="_blank" rel="noopener noreferrer" className="text-neutral-200 hover:text-blue-400 font-medium transition-colors underline decoration-neutral-800 hover:decoration-blue-400">u/BetterAtPS</a> on Reddit.
           </p>
+          <p className="text-[10px] text-neutral-500 leading-relaxed">
+            Source is at <a href="https://github.com/isaiahscape/snapweb-remixed" target="_blank" rel="noopener noreferrer" className="text-neutral-200 hover:text-blue-400 font-medium transition-colors underline decoration-neutral-800 hover:decoration-blue-400">isaiahscape/snapweb-remixed</a>
+          </p>
           <p className="text-[10px] text-neutral-600 font-mono uppercase tracking-[0.2em] mt-1">
             SnapWeb Pro • Secure Browser Image Engine
           </p>
