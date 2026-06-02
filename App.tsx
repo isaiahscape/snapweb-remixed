@@ -962,7 +962,7 @@ const App: React.FC = () => {
   if (!sourceImage) {
     return (
       <div 
-        className="flex flex-col min-h-screen w-full bg-black text-white font-sans selection:bg-white selection:text-black"
+        className="flex flex-col h-screen w-full bg-black text-white font-sans overflow-y-auto selection:bg-white selection:text-black"
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
@@ -1248,9 +1248,14 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {/* Unobtrusive footer */}
-        <footer className="h-10 border-t border-neutral-900 flex items-center justify-center px-6 text-[9px] text-neutral-600 font-mono shrink-0 select-none uppercase tracking-widest">
-          SnapWeb Pro © 2026 • Secure Browser Image Engine
+        {/* Footprint credit footer */}
+        <footer className="py-6 border-t border-neutral-900 flex flex-col items-center justify-center text-center gap-2 px-8 text-[11px] text-neutral-400 font-sans shrink-0 select-text bg-black/40">
+          <p className="leading-relaxed">
+            Recreated by <a href="https://isaiahthings.me" target="_blank" rel="noopener noreferrer" className="text-neutral-200 hover:text-blue-400 font-medium transition-colors underline decoration-neutral-800 hover:decoration-blue-400">Leonardo (@isaiahscape)</a>, generated initially with Google AI Studio by <a href="https://www.reddit.com/user/BetterAtPS" target="_blank" rel="noopener noreferrer" className="text-neutral-200 hover:text-blue-400 font-medium transition-colors underline decoration-neutral-800 hover:decoration-blue-400">u/BetterAtPS</a> on Reddit.
+          </p>
+          <p className="text-[10px] text-neutral-600 font-mono uppercase tracking-[0.2em] mt-1">
+            SnapWeb Pro • Secure Browser Image Engine
+          </p>
         </footer>
 
       </div>
