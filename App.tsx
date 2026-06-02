@@ -6,7 +6,7 @@ import Histogram from './components/Histogram';
 import { Slider, ToolButton, IconButton } from './components/Controls';
 import Cropper from './components/Cropper';
 import ColorMixer from './components/ColorMixer';
-import { RotateCw, RotateCcw, FlipHorizontal, FlipVertical, Loader2 } from 'lucide-react';
+import { RotateCw, RotateCcw, FlipHorizontal, FlipVertical, Loader2, FolderOpen, Cloud, LogOut, RefreshCw, Globe, Settings2, ArrowLeft, AlertCircle, Upload as LucideUpload } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 // Modern Phosphor-style Icons (SVG)
@@ -92,15 +92,240 @@ const App: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Load initial demo image
+  // Google OAuth / Drive States
+  const [googleClientId, setGoogleClientId] = useState(() => {
+    return localStorage.getItem('snapweb_gdrive_client_id') || '';
+  });
+  const [googleAccessToken, setGoogleAccessToken] = useState(() => {
+    return sessionStorage.getItem('snapweb_gdrive_token') || '';
+  });
+  const [googleUser, setGoogleUser] = useState<any | null>(null);
+  const [driveFiles, setDriveFiles] = useState<any[]>([]);
+  const [isFetchingDrive, setIsFetchingDrive] = useState(false);
+  const [isConfiguringCredentials, setIsConfiguringCredentials] = useState(false);
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
+
+  // Check popup hash redirect and communicate token
   useEffect(() => {
+    const hash = window.location.hash;
+    if (hash && hash.includes('access_token=')) {
+      const params = new URLSearchParams(hash.replace('#', '?'));
+      const token = params.get('access_token');
+      if (token && window.opener) {
+        window.opener.postMessage({ type: 'GOOGLE_OAUTH_TOKEN', token }, window.location.origin);
+        window.close();
+      }
+    }
+  }, []);
+
+  // Listen for login message/token from popup window
+  useEffect(() => {
+    const handleOAuthMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      if (event.data?.type === 'GOOGLE_OAUTH_TOKEN') {
+        const token = event.data.token;
+        setGoogleAccessToken(token);
+        sessionStorage.setItem('snapweb_gdrive_token', token);
+      }
+    };
+    window.addEventListener('message', handleOAuthMessage);
+    return () => window.removeEventListener('message', handleOAuthMessage);
+  }, []);
+
+  const handleGoogleLogout = useCallback(() => {
+    setGoogleAccessToken('');
+    sessionStorage.removeItem('snapweb_gdrive_token');
+    setGoogleUser(null);
+    setDriveFiles([]);
+  }, []);
+
+  const fetchGoogleUserProfile = useCallback(async (token: string) => {
+    try {
+      const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setGoogleUser(data);
+      } else {
+        if (res.status === 401) {
+          handleGoogleLogout();
+        }
+      }
+    } catch (err) {
+      console.error("Failed to fetch Google profile:", err);
+    }
+  }, [handleGoogleLogout]);
+
+  const fetchDriveFiles = useCallback(async (token: string) => {
+    setIsFetchingDrive(true);
+    try {
+      const q = encodeURIComponent("mimeType contains 'image/' and trashed = false");
+      const url = `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,mimeType,thumbnailLink,size,createdTime)&pageSize=32&orderBy=modifiedTime+desc`;
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setDriveFiles(data.files || []);
+      } else {
+        if (res.status === 401) {
+          handleGoogleLogout();
+        }
+        console.error("Drive API load error:", await res.text());
+      }
+    } catch (err) {
+      console.error("Failed to fetch Drive files:", err);
+    } finally {
+      setIsFetchingDrive(false);
+    }
+  }, [handleGoogleLogout]);
+
+  useEffect(() => {
+    if (googleAccessToken) {
+      fetchGoogleUserProfile(googleAccessToken);
+      fetchDriveFiles(googleAccessToken);
+    }
+  }, [googleAccessToken, fetchGoogleUserProfile, fetchDriveFiles]);
+
+  const handleGoogleLogin = () => {
+    if (!googleClientId) {
+      setIsConfiguringCredentials(true);
+      return;
+    }
+    const redirectUri = encodeURIComponent(window.location.origin);
+    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${googleClientId}&redirect_uri=${redirectUri}&response_type=token&scope=${encodeURIComponent("https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/userinfo.profile")}`;
+    window.open(authUrl, 'google_oauth_popup', 'width=550,height=650,left=150,top=50');
+  };
+
+  const handleSaveClientId = (id: string) => {
+    const trimmed = id.trim();
+    setGoogleClientId(trimmed);
+    localStorage.setItem('snapweb_gdrive_client_id', trimmed);
+    setIsConfiguringCredentials(false);
+    
+    // Auto login if client id isn't empty and they click save
+    if (trimmed) {
+      setTimeout(() => {
+        const redirectUri = encodeURIComponent(window.location.origin);
+        const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${trimmed}&redirect_uri=${redirectUri}&response_type=token&scope=${encodeURIComponent("https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/userinfo.profile")}`;
+        window.open(authUrl, 'google_oauth_popup', 'width=550,height=650,left=150,top=50');
+      }, 300);
+    }
+  };
+
+  const loadDriveFile = async (fileId: string, filename: string) => {
+    if (!googleAccessToken) return;
+    setIsLoadingFile(true);
+    try {
+      const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+        headers: { Authorization: `Bearer ${googleAccessToken}` }
+      });
+      if (!res.ok) throw new Error("Could not download file content from Drive");
+      const blob = await res.blob();
+      
+      const file = new File([blob], filename, { type: blob.type || 'image/jpeg' });
+      const lowerName = filename.toLowerCase();
+      const isRawFile = lowerName.endsWith('.dng') || lowerName.endsWith('.cr2') || lowerName.endsWith('.nef') || lowerName.endsWith('.arw');
+      
+      let img: HTMLImageElement;
+      if (isRawFile) {
+        setIsRaw(true);
+        img = await loadRawImage(file);
+      } else {
+        setIsRaw(false);
+        img = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (ev) => {
+            const i = new Image();
+            i.onload = () => resolve(i);
+            i.onerror = reject;
+            i.src = ev.target?.result as string;
+          };
+          reader.readAsDataURL(file);
+        });
+      }
+
+      setSourceImage(img);
+      setImageState(DEFAULT_IMAGE_STATE);
+      setActiveMaskId(null);
+    } catch (err: any) {
+      console.error(err);
+      alert("Error loading photo from Google Drive: " + err.message);
+    } finally {
+      setIsLoadingFile(false);
+    }
+  };
+
+  const loadSampleImage = () => {
+    setIsLoadingFile(true);
     const img = new Image();
     img.crossOrigin = 'Anonymous';
     img.src = 'https://picsum.photos/1920/1280';
     img.onload = () => {
       setSourceImage(img);
+      setIsRaw(false);
+      setImageState(DEFAULT_IMAGE_STATE);
+      setActiveMaskId(null);
+      setIsLoadingFile(false);
     };
-  }, []);
+    img.onerror = () => {
+      setIsLoadingFile(false);
+      alert("Failed to load sample image. Please verify your connection.");
+    };
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingOver(false);
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingOver(false);
+    
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+
+    const fileName = file.name.toLowerCase();
+    const isRawFile = fileName.endsWith('.dng') || fileName.endsWith('.cr2') || fileName.endsWith('.nef') || fileName.endsWith('.arw');
+
+    setIsLoadingFile(true);
+
+    try {
+      let img: HTMLImageElement;
+      if (isRawFile) {
+        setIsRaw(true);
+        img = await loadRawImage(file);
+      } else {
+        setIsRaw(false);
+        img = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (ev) => {
+            const i = new Image();
+            i.onload = () => resolve(i);
+            i.onerror = reject;
+            i.src = ev.target?.result as string;
+          };
+          reader.readAsDataURL(file);
+        });
+      }
+
+      setSourceImage(img);
+      setImageState(DEFAULT_IMAGE_STATE);
+      setActiveMaskId(null);
+    } catch (err) {
+      console.error("Failed to load dropped image", err);
+      alert("Could not load file. If this is a RAW file, the format may not be supported yet.");
+    } finally {
+      setIsLoadingFile(false);
+    }
+  };
 
   // Reset zoom when image changes
   useEffect(() => {
@@ -590,12 +815,307 @@ const App: React.FC = () => {
 
   const activeMask = imageState.masks.find(m => m.id === activeMaskId);
 
+  if (!sourceImage) {
+    return (
+      <div 
+        className="flex flex-col min-h-screen w-full bg-black text-white font-sans selection:bg-white selection:text-black"
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
+        {/* Simple elegant header */}
+        <header className="h-16 bg-black border-b border-neutral-900 flex justify-between items-center px-6 shrink-0">
+          <div className="flex items-center gap-3">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-5 h-5 text-neutral-100">
+              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+              <circle cx="12" cy="13" r="4" />
+            </svg>
+            <div className="font-bold tracking-[0.2em] text-xs text-white">
+              SNAPWEB <span className="text-neutral-500 font-normal">PRO</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 text-xs text-neutral-400">
+            <span className="flex items-center gap-1 bg-neutral-900/60 border border-neutral-800 px-3 py-1 rounded-full text-[10px] font-mono tracking-wider">
+              <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
+              On-Device Mode
+            </span>
+          </div>
+        </header>
+
+        {/* Content container */}
+        <main className="flex-1 max-w-6xl mx-auto w-full px-6 py-12 flex flex-col justify-center gap-8 relative">
+          
+          {/* Headline */}
+          <div className="text-center max-w-2xl mx-auto mb-4">
+            <h1 className="text-3xl font-extrabold tracking-tight text-white sm:text-4xl">
+              Professional RAW & Photo Editing, <br/>
+              <span className="bg-gradient-to-r from-neutral-200 to-neutral-400 bg-clip-text text-transparent">Directly in your Browser.</span>
+            </h1>
+            <p className="mt-3.5 text-xs text-neutral-400 leading-relaxed max-w-lg mx-auto">
+              Inspired by Snapseed, SnapWeb provides state-of-the-art selective editing, color grading, and on-device processing. No cloud uploads, complete privacy, absolute speed.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-stretch">
+            
+            {/* Left Column: Local Uploader */}
+            <div 
+              className={`relative flex flex-col justify-between rounded-2xl border transition-all duration-300 p-8 bg-neutral-950/40 backdrop-blur-sm
+                ${isDraggingOver 
+                  ? 'border-neutral-200 bg-neutral-900/10 scale-[1.015]' 
+                  : 'border-neutral-800 hover:border-neutral-700'
+                }
+              `}
+            >
+              <div className="flex flex-col items-center justify-center text-center py-8">
+                <div className={`p-4 rounded-full bg-neutral-900 border transition-transform duration-300 ${isDraggingOver ? 'scale-110 border-neutral-400' : 'border-neutral-800'}`}>
+                  <FolderOpen className="w-8 h-8 text-neutral-300 pointer-events-none" />
+                </div>
+                
+                <h3 className="mt-5 text-sm font-bold uppercase tracking-wider text-neutral-100">Open Local Photo</h3>
+                <p className="mt-2 text-xs text-neutral-400 max-w-xs leading-relaxed">
+                  Drag and drop your picture here, or browse local folders. Fully supports standard files and professional RAW formats.
+                </p>
+                <span className="mt-1.5 text-[9px] text-neutral-500 font-mono">
+                  PNG, JPEG, WEBP, TIFF, DNG, CR2, NEF, ARW
+                </span>
+
+                <button 
+                  onClick={() => fileInputRef.current?.click()}
+                  className="mt-6 bg-white hover:bg-neutral-200 text-black px-6 py-2.5 rounded-lg text-xs font-bold tracking-wide uppercase transition shadow-md cursor-pointer flex items-center gap-2"
+                >
+                  <LucideUpload className="w-3.5 h-3.5" />
+                  Browse Files
+                </button>
+                <input 
+                  ref={fileInputRef} 
+                  type="file" 
+                  accept="image/*,.dng,.cr2,.nef,.arw" 
+                  className="hidden" 
+                  onChange={handleUpload} 
+                />
+              </div>
+
+              <div className="border-t border-neutral-900 pt-6 mt-4 flex items-center justify-center gap-2">
+                <span className="text-[10px] text-neutral-500 uppercase tracking-wider font-semibold">Need a test?</span>
+                <button 
+                  onClick={loadSampleImage}
+                  className="text-xs text-neutral-100 hover:text-white font-bold underline bg-neutral-900/50 hover:bg-neutral-950 px-3 py-1.5 rounded-md border border-neutral-800 transition-colors cursor-pointer"
+                >
+                  Try Sample Photo
+                </button>
+              </div>
+            </div>
+
+            {/* Right Column: Google Drive */}
+            <div className="flex flex-col justify-between rounded-2xl border border-neutral-800 hover:border-neutral-700 transition-all duration-300 p-8 bg-neutral-950/40 backdrop-blur-sm">
+              <div className="flex flex-col h-full">
+                
+                <div className="flex justify-between items-start border-b border-neutral-900 pb-4 mb-4 shrink-0">
+                  <div className="flex items-center gap-2">
+                    <Cloud className="w-5 h-5 text-blue-400 shrink-0" />
+                    <h3 className="text-sm font-bold uppercase tracking-wider text-neutral-100">Google Drive</h3>
+                  </div>
+                  {googleAccessToken && (
+                    <button 
+                      onClick={handleGoogleLogout}
+                      className="text-[10px] font-bold text-neutral-400 hover:text-red-400 flex items-center gap-1.5 tracking-wider bg-neutral-900 px-2.5 py-1 rounded transition-colors cursor-pointer"
+                      title="Disconnect Google Account"
+                    >
+                      <LogOut className="w-3 h-3" />
+                      SIGN OUT
+                    </button>
+                  )}
+                </div>
+
+                {isFetchingDrive ? (
+                  <div className="flex-1 flex flex-col items-center justify-center py-10">
+                    <Loader2 className="w-6 h-6 text-blue-400 animate-spin mb-2" />
+                    <span className="text-xs text-neutral-400 tracking-wider font-semibold uppercase">Listing cloud files...</span>
+                  </div>
+                ) : !googleAccessToken ? (
+                  // Connect / Authorize Tab
+                  <div className="flex-1 flex flex-col items-center justify-center text-center py-6">
+                    <div className="p-4 rounded-full bg-neutral-900 border border-neutral-800 mb-4">
+                      <Globe className="w-7 h-7 text-neutral-300" />
+                    </div>
+                    <p className="text-xs text-neutral-400 max-w-sm leading-relaxed mb-5">
+                      Access and develop photo files saved directly in your Google Drive cloud account. Secure, serverless, and private.
+                    </p>
+
+                    {isConfiguringCredentials ? (
+                      <div className="w-full max-w-sm bg-neutral-900/60 p-4 border border-neutral-800/80 rounded-xl mb-4 text-left">
+                        <label className="block text-[10px] uppercase font-bold tracking-wider text-neutral-400 mb-1.5">
+                          Google Client ID (OAuth 2.0 Web Client)
+                        </label>
+                        <input
+                          type="text"
+                          defaultValue={googleClientId}
+                          placeholder="xxxxxxxxxxxx-xxxxxxxxxxxxxxxx.apps.googleusercontent.com"
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              handleSaveClientId((e.target as HTMLInputElement).value);
+                            }
+                          }}
+                          onBlur={(e) => handleSaveClientId(e.target.value)}
+                          className="w-full bg-neutral-950 border border-neutral-800 rounded-md px-3 py-2 text-xs font-mono text-neutral-200 tracking-wider focus:outline-none focus:border-neutral-500 placeholder:text-neutral-700"
+                        />
+                        <p className="text-[9px] text-neutral-500 leading-normal mt-2">
+                          Press <kbd className="bg-neutral-800 px-1 border border-neutral-700 rounded text-neutral-400 font-mono">Enter</kbd> to save and sign-in. To setup, enable the Google Drive API in your Google Developer console and configure authorized origins.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center gap-3 w-full">
+                        <button 
+                          onClick={handleGoogleLogin}
+                          disabled={isLoadingFile}
+                          className="w-full max-w-xs bg-blue-600 hover:bg-blue-500 text-white py-2.5 rounded-lg text-xs font-bold tracking-wide uppercase transition cursor-pointer flex items-center justify-center gap-2 shadow-lg"
+                        >
+                          <svg className="w-4 h-4 fill-white" viewBox="0 0 24 24">
+                            <path d="M23.745 12.27c0-.70-.06-1.4-.19-2.07H12v3.9h6.69c-.29 1.5-.1.1.1. 1.14-.1. 2.63-1.07 3.53l3.29 2.55c1.93-1.78 3.03-4.39 3.03-7.39z"/>
+                            <path d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.29-2.55c-.91.61-2.08.98-3.41.98-3.14 0-5.81-2.12-6.76-4.97L.533 17.58C2.56 21.4 6.94 24 12 24z"/>
+                            <path d="M5.24 14.55c-.24-.72-.38-1.5-.38-2.3 0-.8.14-1.58.38-2.3L1.24 3.75C.45 5.4 0 7.22 0 9.1c0 1.88.45 3.7 1.24 5.35l4 9.1z"/>
+                            <path d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 6.94 0 2.56 2.6 1.24 5.35l4 9.1c.95-2.85 3.62-4.97 6.76-4.97z"/>
+                          </svg>
+                          Connect Google Drive
+                        </button>
+                        
+                        <button
+                          onClick={() => setIsConfiguringCredentials(true)}
+                          className="text-[10px] text-neutral-500 hover:text-neutral-400 font-bold uppercase tracking-wider flex items-center gap-1.5 transition cursor-pointer"
+                        >
+                          <Settings2 className="w-3 h-3" />
+                          Credentials Setup
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  // File display list
+                  <div className="flex-1 flex flex-col justify-between overflow-hidden">
+                    
+                    <div className="flex justify-between items-center bg-neutral-900/40 px-3 py-2 rounded-lg border border-neutral-800/60 shrink-0 mb-3 ml-0.5">
+                      <div className="flex items-center gap-2 overflow-hidden">
+                        {googleUser?.picture ? (
+                          <img 
+                            src={googleUser.picture} 
+                            referrerPolicy="no-referrer" 
+                            alt="User avatar" 
+                            className="w-5 h-5 rounded-full border border-neutral-800 shrink-0" 
+                          />
+                        ) : (
+                          <div className="w-5 h-5 rounded-full bg-neutral-800 border border-neutral-700 shrink-0"></div>
+                        )}
+                        <span className="text-[10px] font-bold text-neutral-300 tracking-wider truncate max-w-[150px] uppercase">
+                          {googleUser?.name || 'Cloud Library'}
+                        </span>
+                      </div>
+                      
+                      <button 
+                        onClick={() => fetchDriveFiles(googleAccessToken)}
+                        className="p-1 px-1.5 rounded hover:bg-neutral-800 text-neutral-400 hover:text-white transition cursor-pointer"
+                        title="Reload Photo List"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto max-h-[220px] pr-1.5 custom-scrollbar grid grid-cols-2 gap-3 pb-2 ml-0.5">
+                      {driveFiles.length === 0 ? (
+                        <div className="col-span-2 flex flex-col items-center justify-center text-center py-6">
+                          <AlertCircle className="w-5 h-5 text-neutral-600 mb-1.5" />
+                          <span className="text-[11px] font-bold tracking-wider text-neutral-400 uppercase">No photos found</span>
+                          <span className="text-[9px] text-neutral-500 mt-0.5">Make sure you have image files in your Google Drive folder.</span>
+                        </div>
+                      ) : (
+                        driveFiles.map(file => (
+                          <button
+                            key={file.id}
+                            onClick={() => loadDriveFile(file.id, file.name)}
+                            disabled={isLoadingFile}
+                            className="group flex flex-col items-center text-left bg-neutral-900/60 hover:bg-neutral-900 border border-neutral-800/80 hover:border-neutral-700 rounded-xl overflow-hidden p-2 transition duration-200 cursor-pointer w-full text-neutral-300 disabled:opacity-50"
+                          >
+                            <div className="relative w-full aspect-[4/3] bg-neutral-950 rounded-lg overflow-hidden shrink-0 flex items-center justify-center">
+                              {file.thumbnailLink ? (
+                                <img
+                                  src={file.thumbnailLink}
+                                  referrerPolicy="no-referrer"
+                                  className="w-full h-full object-cover transition duration-300 group-hover:scale-105"
+                                  alt={file.name}
+                                  onError={(e) => {
+                                    (e.target as HTMLElement).style.display = 'none';
+                                  }}
+                                />
+                              ) : null}
+                              <div className="absolute inset-x-0 bottom-0 bg-neutral-950/80 p-1 flex justify-center text-[8px] font-semibold text-neutral-400 font-mono uppercase tracking-widest truncate">
+                                {file.mimeType?.split('/')[1]?.toUpperCase() || 'IMAGE'}
+                              </div>
+                            </div>
+                            
+                            <div className="w-full mt-2 flex flex-col leading-tight overflow-hidden px-1">
+                              <span className="text-[10px] font-bold text-neutral-200 group-hover:text-white truncate uppercase tracking-tight">
+                                {file.name}
+                              </span>
+                              <span className="text-[8px] text-neutral-500 mt-1 uppercase">
+                                {new Date(file.createdTime).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                              </span>
+                            </div>
+                          </button>
+                        ))
+                      )}
+                    </div>
+
+                  </div>
+                )}
+
+              </div>
+            </div>
+
+          </div>
+
+        </main>
+
+        {/* Global Loading Overlay */}
+        {isLoadingFile && (
+          <div className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-md flex flex-col items-center justify-center text-white">
+            <Loader2 className="w-8 h-8 text-neutral-100 animate-spin mb-4" />
+            <div className="text-center font-bold uppercase tracking-widest text-[11px]">
+              Processing Photo File...
+            </div>
+            <div className="text-[9px] text-neutral-500 mt-1 uppercase tracking-wider">
+              Decoding metadata & calibrating system profiles
+            </div>
+          </div>
+        )}
+
+        {/* Unobtrusive footer */}
+        <footer className="h-10 border-t border-neutral-900 flex items-center justify-center px-6 text-[9px] text-neutral-600 font-mono shrink-0 select-none uppercase tracking-widest">
+          SnapWeb Pro © 2026 • Secure Browser Image Engine
+        </footer>
+
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-screen w-full bg-black text-white overflow-hidden font-sans">
       
       {/* Top Navigation */}
       <header className="h-14 bg-black border-b border-neutral-900 flex justify-between items-center px-4 shrink-0 z-30">
         <div className="flex items-center gap-6">
+            <button 
+              onClick={() => {
+                if (confirm("Close this image and return to homepage? Unsaved changes will be lost.")) {
+                  setSourceImage(null);
+                  setImageState(DEFAULT_IMAGE_STATE);
+                  setActiveMaskId(null);
+                }
+              }}
+              className="text-neutral-400 hover:text-white flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider transition-colors mr-1 cursor-pointer bg-neutral-900 hover:bg-neutral-850 border border-neutral-800 px-2.5 py-1.5 rounded"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              Close
+            </button>
             <div className="font-bold tracking-[0.25em] text-sm text-white">
                 SNAPWEB <span className="text-neutral-600 font-normal">PRO</span>
             </div>

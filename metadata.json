@@ -2,5 +2,5 @@
   "name": "Remix: SnapWeb Editor",
   "description": "A powerful, browser-based photo editor inspired by Snapseed. Features on-device processing for privacy and speed.",
   "requestFramePermissions": [],
-  "majorCapabilities": []
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
