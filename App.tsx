@@ -62,6 +62,35 @@ const App: React.FC = () => {
   const [showExportModal, setShowExportModal] = useState(false);
   const [exportFormat, setExportFormat] = useState<'jpeg' | 'png'>('jpeg');
   const [exportQuality, setExportQuality] = useState<number>(0.95);
+
+  // Copy/Paste Settings and Custom Toast Notifications
+  const [copiedSettings, setCopiedSettings] = useState<Partial<ImageState> | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null);
+
+  const showToast = (message: string, type: 'success' | 'info' | 'error' = 'success') => {
+    setToast({ message, type });
+  };
+
+  // Toast effect for autohide
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => {
+      setToast(null);
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [toast]);
+
+  // Load cached settings on mount if available in localStorage
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('snapweb_copied_settings');
+      if (stored) {
+        setCopiedSettings(JSON.parse(stored));
+      }
+    } catch (e) {
+      console.error("Failed to parse cached settings from localStorage", e);
+    }
+  }, []);
   
   // Color Mixer State
   const [activeColorChannel, setActiveColorChannel] = useState<ColorChannel>('red');
@@ -663,6 +692,89 @@ const App: React.FC = () => {
           setActiveMaskId(null);
       }
   }
+
+  const handleCopySettings = async () => {
+    if (!sourceImage) return;
+    
+    const stylingSettings: Partial<ImageState> = {
+      rawTemperature: imageState.rawTemperature,
+      rawTint: imageState.rawTint,
+      rawExposureEV: imageState.rawExposureEV,
+      rawHighlights: imageState.rawHighlights,
+      rawShadows: imageState.rawShadows,
+      rawProfile: imageState.rawProfile,
+      brightness: imageState.brightness,
+      contrast: imageState.contrast,
+      saturation: imageState.saturation,
+      ambiance: imageState.ambiance,
+      warmth: imageState.warmth,
+      tint: imageState.tint,
+      highlights: imageState.highlights,
+      shadows: imageState.shadows,
+      structure: imageState.structure,
+      sharpening: imageState.sharpening,
+      dehaze: imageState.dehaze,
+      grain: imageState.grain,
+      vignette: imageState.vignette,
+      colorGrade: imageState.colorGrade,
+    };
+
+    setCopiedSettings(stylingSettings);
+    localStorage.setItem('snapweb_copied_settings', JSON.stringify(stylingSettings));
+
+    try {
+      const jsonStr = JSON.stringify(stylingSettings, null, 2);
+      await navigator.clipboard.writeText(jsonStr);
+      showToast("Edit settings copied to clipboard!", "success");
+    } catch (err) {
+      // Elegant fallback for preview context frames
+      showToast("Settings copied to memory!", "success");
+    }
+  };
+
+  const handlePasteSettings = async () => {
+    if (!sourceImage) return;
+
+    let targetSettings = copiedSettings;
+
+    try {
+      if (navigator.clipboard && typeof navigator.clipboard.readText === 'function') {
+        const clipText = await navigator.clipboard.readText();
+        if (clipText && clipText.trim().startsWith('{')) {
+          const parsed = JSON.parse(clipText);
+          if (typeof parsed.brightness === 'number' || typeof parsed.rawExposureEV === 'number') {
+            targetSettings = parsed;
+          }
+        }
+      }
+    } catch (e) {
+      console.log("Clipboard read not permitted or failed, falling back to local slot", e);
+    }
+
+    if (!targetSettings) {
+      showToast("No copied settings available! Please copy adjustments first.", "error");
+      return;
+    }
+
+    const validKeys: (keyof ImageState)[] = [
+      'rawTemperature', 'rawTint', 'rawExposureEV', 'rawHighlights', 'rawShadows', 'rawProfile',
+      'brightness', 'contrast', 'saturation', 'ambiance', 'warmth', 'tint', 'highlights', 'shadows',
+      'structure', 'sharpening', 'dehaze', 'grain', 'vignette', 'colorGrade'
+    ];
+
+    setImageState(prev => {
+      const updated = { ...prev };
+      validKeys.forEach(k => {
+        if (targetSettings && targetSettings[k] !== undefined) {
+          // @ts-ignore
+          updated[k] = targetSettings[k];
+        }
+      });
+      return updated;
+    });
+
+    showToast("Edit settings applied successfully!", "success");
+  };
 
   const updateState = (key: keyof ImageState, value: any) => {
     setImageState(prev => ({ ...prev, [key]: value }));
@@ -1341,6 +1453,22 @@ const App: React.FC = () => {
                     title="Reset All"
                     className="hover:bg-neutral-900 p-1.5 sm:p-2"
                   />
+             )}
+             {sourceImage && (
+               <>
+                 <IconButton 
+                    icon={<svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2} className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>} 
+                    onClick={handleCopySettings} 
+                    title="Copy Adjustments"
+                    className="hover:bg-neutral-900 p-1.5 sm:p-2 hover:text-amber-500 transition-colors"
+                  />
+                 <IconButton 
+                    icon={<svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2} className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9h6m-3-3v6" /></svg>} 
+                    onClick={handlePasteSettings} 
+                    title="Paste Adjustments"
+                    className={`hover:bg-neutral-900 p-1.5 sm:p-2 transition-colors ${copiedSettings ? 'hover:text-emerald-500 text-emerald-400' : 'opacity-45 cursor-not-allowed text-neutral-500'}`}
+                  />
+               </>
              )}
              <button 
                 onMouseDown={() => setIsComparing(true)}
@@ -2055,6 +2183,23 @@ const App: React.FC = () => {
               </div>
             </motion.div>
           </div>
+        )}
+
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: 30, scale: 0.95, x: "-50%" }}
+            animate={{ opacity: 1, y: 0, scale: 1, x: "-50%" }}
+            exit={{ opacity: 0, y: 20, scale: 0.95, x: "-50%" }}
+            transition={{ duration: 0.15 }}
+            className={`fixed bottom-8 left-1/2 z-[130] flex items-center gap-2 px-4 py-2.5 rounded-xl border shadow-2xl text-[10px] sm:text-[11px] font-bold uppercase tracking-wider bg-neutral-900/95 backdrop-blur border-neutral-800 text-white min-w-[240px] justify-center text-center`}
+          >
+            {toast.type === 'success' ? (
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+            ) : (
+              <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0" />
+            )}
+            <span>{toast.message}</span>
+          </motion.div>
         )}
       </AnimatePresence>
 
