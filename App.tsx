@@ -6,7 +6,7 @@ import Histogram from './components/Histogram';
 import { Slider, ToolButton, IconButton } from './components/Controls';
 import Cropper from './components/Cropper';
 import ColorMixer from './components/ColorMixer';
-import { RotateCw, RotateCcw, FlipHorizontal, FlipVertical, Loader2, FolderOpen, Cloud, LogOut, RefreshCw, Globe, Settings2, ArrowLeft, AlertCircle, Upload as LucideUpload } from 'lucide-react';
+import { RotateCw, RotateCcw, FlipHorizontal, FlipVertical, Loader2, FolderOpen, Cloud, LogOut, RefreshCw, Globe, Settings2, ArrowLeft, AlertCircle, ZoomIn, ZoomOut, Maximize2, Upload as LucideUpload } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 // Modern Phosphor-style Icons (SVG)
@@ -435,6 +435,77 @@ const App: React.FC = () => {
       setPan({ x: 0, y: 0 });
   }, [sourceImage]);
 
+  // Lock page-wide browser zoom globally (wheel ctrlKey, pinch gestures on Safari/Chrome)
+  useEffect(() => {
+    const handleGlobalWheel = (e: WheelEvent) => {
+      // Prevent browser layout zoom globally (e.ctrlKey is true for pinch-to-zoom on Chromebooks/macOS trackpads and ctrl + wheel)
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+      }
+    };
+
+    const handleGesture = (e: Event) => {
+      // Prevent trackpad zoom gestures in Safari from scaling the entire page
+      e.preventDefault();
+    };
+
+    // Use passive: false to allow calling e.preventDefault()
+    window.addEventListener('wheel', handleGlobalWheel, { passive: false });
+    window.addEventListener('gesturestart', handleGesture, { passive: false });
+    window.addEventListener('gesturechange', handleGesture, { passive: false });
+
+    return () => {
+      window.removeEventListener('wheel', handleGlobalWheel);
+      window.removeEventListener('gesturestart', handleGesture);
+      window.removeEventListener('gesturechange', handleGesture);
+    };
+  }, []);
+
+  // Attach a native, non-passive wheel event listener on the workspace container to handle custom image-only zoom
+  useEffect(() => {
+    const handleWorkspaceWheel = (e: WheelEvent) => {
+      // Trigger zoom of image if Alt, Ctrl, or Cmd is active (which includes standard pinch-to-zoom on trackpad)
+      if (e.altKey || e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        
+        if (!containerRef.current) return;
+
+        const rect = containerRef.current.getBoundingClientRect();
+        // Calculate mouse position relative to center of the container
+        const mouseX = e.clientX - (rect.left + rect.width / 2);
+        const mouseY = e.clientY - (rect.top + rect.height / 2);
+
+        const delta = -e.deltaY * 0.001;
+        const targetZoom = zoom + delta * 5;
+        const newZoom = Math.min(Math.max(1, targetZoom), 5); // Scale 1x to 5x
+        
+        if (newZoom !== zoom) {
+            if (newZoom === 1) {
+                 setPan({ x: 0, y: 0 });
+                 setZoom(1);
+            } else {
+                const scaleFactor = newZoom / zoom;
+                const newPanX = mouseX * (1 - scaleFactor) + pan.x * scaleFactor;
+                const newPanY = mouseY * (1 - scaleFactor) + pan.y * scaleFactor;
+                setPan({ x: newPanX, y: newPanY });
+                setZoom(newZoom);
+            }
+        }
+      }
+    };
+
+    const container = containerRef.current;
+    if (container) {
+      container.addEventListener('wheel', handleWorkspaceWheel, { passive: false });
+    }
+
+    return () => {
+      if (container) {
+        container.removeEventListener('wheel', handleWorkspaceWheel);
+      }
+    };
+  }, [zoom, pan]);
+
   // Helper to render the red overlay directly from mask data
   // We use this manually during painting for performance, and in useEffect for state updates
   const updateOverlayCanvas = useCallback(() => {
@@ -706,36 +777,7 @@ const App: React.FC = () => {
       updateOverlayCanvas();
   };
 
-  // --- Zoom Interaction ---
-  const handleWheel = (e: React.WheelEvent) => {
-      if (e.altKey || e.ctrlKey) {
-          e.preventDefault();
-          
-          if (!containerRef.current) return;
-
-          const rect = containerRef.current.getBoundingClientRect();
-          // Calculate mouse position relative to center of the container
-          const mouseX = e.clientX - (rect.left + rect.width / 2);
-          const mouseY = e.clientY - (rect.top + rect.height / 2);
-
-          const delta = -e.deltaY * 0.001;
-          const targetZoom = zoom + delta * 5;
-          const newZoom = Math.min(Math.max(1, targetZoom), 5); // Scale 1x to 5x
-          
-          if (newZoom !== zoom) {
-              if (newZoom === 1) {
-                   setPan({ x: 0, y: 0 });
-                   setZoom(1);
-              } else {
-                  const scaleFactor = newZoom / zoom;
-                  const newPanX = mouseX * (1 - scaleFactor) + pan.x * scaleFactor;
-                  const newPanY = mouseY * (1 - scaleFactor) + pan.y * scaleFactor;
-                  setPan({ x: newPanX, y: newPanY });
-                  setZoom(newZoom);
-              }
-          }
-      }
-  };
+  // --- Zoom Interaction is now handled natively via the non-passive wheel event listener hooks ---
 
   // --- Canvas Interaction Handlers ---
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -1348,7 +1390,6 @@ const App: React.FC = () => {
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
                 onMouseLeave={handleMouseUp}
-                onWheel={handleWheel}
             >
                 <canvas 
                     ref={canvasRef} 
@@ -1378,6 +1419,75 @@ const App: React.FC = () => {
                     </svg>
                 )}
             </div>
+
+            {/* Floating Zoom Controls Overlay inside Main center-view relative workspace */}
+            {sourceImage && (
+              <div 
+                id="zoom-controls" 
+                className="absolute bottom-6 right-6 flex items-center gap-1.5 bg-neutral-900/90 border border-neutral-800 rounded-lg p-1.5 z-30 shadow-2xl backdrop-blur-md select-none"
+              >
+                {/* Zoom Out Button */}
+                <button
+                  id="btn-zoom-out"
+                  onClick={() => {
+                    setZoom(prev => {
+                      const nextZoom = Math.min(Math.max(1, prev - 0.5), 5);
+                      if (nextZoom === 1) setPan({ x: 0, y: 0 });
+                      return nextZoom;
+                    });
+                  }}
+                  disabled={zoom <= 1}
+                  className="p-1.5 rounded bg-neutral-800 hover:bg-neutral-700 active:bg-neutral-600 text-neutral-200 disabled:opacity-40 disabled:hover:bg-neutral-800 transition cursor-pointer flex items-center justify-center border border-neutral-700/30"
+                  title="Zoom Out (Alt + Scroll Down)"
+                >
+                  <ZoomOut className="w-3.5 h-3.5" />
+                </button>
+
+                {/* Percentage Label */}
+                <span 
+                  id="lbl-zoom-level" 
+                  className="text-[10px] font-mono text-neutral-300 font-medium text-center min-w-[42px] cursor-pointer hover:text-white"
+                  title="Double-click to reset zoom"
+                  onDoubleClick={() => {
+                    setZoom(1);
+                    setPan({ x: 0, y: 0 });
+                  }}
+                >
+                  {Math.round(zoom * 100)}%
+                </span>
+
+                {/* Zoom In Button */}
+                <button
+                  id="btn-zoom-in"
+                  onClick={() => {
+                    setZoom(prev => Math.min(prev + 0.5, 5));
+                  }}
+                  disabled={zoom >= 5}
+                  className="p-1.5 rounded bg-neutral-800 hover:bg-neutral-700 active:bg-neutral-600 text-neutral-200 disabled:opacity-40 disabled:hover:bg-neutral-800 transition cursor-pointer flex items-center justify-center border border-neutral-700/30"
+                  title="Zoom In (Alt + Scroll Up)"
+                >
+                  <ZoomIn className="w-3.5 h-3.5" />
+                </button>
+
+                {/* Vertical Divider */}
+                <span className="w-[1px] h-4 bg-neutral-800 mx-1" />
+
+                {/* Reset fit zoom */}
+                <button
+                  id="btn-zoom-reset"
+                  onClick={() => {
+                    setZoom(1);
+                    setPan({ x: 0, y: 0 });
+                  }}
+                  disabled={zoom === 1 && pan.x === 0 && pan.y === 0}
+                  className="p-1.5 px-2 rounded bg-neutral-800 hover:bg-neutral-700 active:bg-neutral-600 text-neutral-200 disabled:opacity-40 disabled:hover:bg-neutral-800 transition cursor-pointer flex items-center gap-1 text-[9px] font-bold tracking-wider uppercase border border-neutral-700/30"
+                  title="Reset Zoom & Pan"
+                >
+                  <Maximize2 className="w-3 h-3" />
+                  <span>Fit</span>
+                </button>
+              </div>
+            )}
         </main>
 
         {/* Right: Sidebar Controls */}
