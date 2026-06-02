@@ -257,6 +257,96 @@ const App: React.FC = () => {
     }
   };
 
+  const createProceduralSampleImage = (): HTMLImageElement => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1920;
+    canvas.height = 1280;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      // Gradient sky (deep evening to orange warm horizon)
+      const skyGrad = ctx.createLinearGradient(0, 0, 0, 1280);
+      skyGrad.addColorStop(0, '#0f172a');
+      skyGrad.addColorStop(0.3, '#1e1b4b');
+      skyGrad.addColorStop(0.6, '#581c87');
+      skyGrad.addColorStop(0.8, '#9d174d');
+      skyGrad.addColorStop(1, '#f97316');
+      ctx.fillStyle = skyGrad;
+      ctx.fillRect(0, 0, 1920, 1280);
+
+      // Glowing Sun/Sunset
+      ctx.shadowColor = '#f59e0b';
+      ctx.shadowBlur = 150;
+      ctx.beginPath();
+      ctx.arc(960, 800, 120, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffedd5';
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      // Far mountain range
+      ctx.beginPath();
+      ctx.moveTo(0, 1280);
+      for (let x = 0; x <= 1920; x += 10) {
+        const y = 850 - Math.sin((x / 1920) * Math.PI * 2) * 100 - Math.cos((x / 1920) * Math.PI * 8) * 20;
+        ctx.lineTo(x, y);
+      }
+      ctx.lineTo(1920, 1280);
+      ctx.fillStyle = '#4a044e';
+      ctx.fill();
+
+      // Mid mountain range
+      ctx.beginPath();
+      ctx.moveTo(0, 1280);
+      for (let x = 0; x <= 1920; x += 10) {
+        const y = 920 - Math.sin((x / 1920) * Math.PI * 3.5) * 70 + Math.cos((x / 1920) * Math.PI * 14) * 10;
+        ctx.lineTo(x, y);
+      }
+      ctx.lineTo(1920, 1280);
+      ctx.fillStyle = '#310a5d';
+      ctx.fill();
+
+      // Foreground Hills
+      ctx.beginPath();
+      ctx.moveTo(0, 1280);
+      for (let x = 0; x <= 1920; x += 10) {
+        const y = 1000 - Math.sin((x / 1920) * Math.PI * 5) * 45;
+        ctx.lineTo(x, y);
+      }
+      ctx.lineTo(1920, 1280);
+      ctx.fillStyle = '#111827';
+      ctx.fill();
+
+      // Lake reflection area
+      const waterGrad = ctx.createLinearGradient(0, 1000, 0, 1280);
+      waterGrad.addColorStop(0, '#111827');
+      waterGrad.addColorStop(0.1, '#1e1b4b');
+      waterGrad.addColorStop(1, '#311042');
+      ctx.fillStyle = waterGrad;
+      ctx.fillRect(0, 1000, 1920, 280);
+
+      // Specular pathway
+      const sunReflection = ctx.createLinearGradient(820, 0, 1100, 0);
+      sunReflection.addColorStop(0, 'rgba(249, 115, 22, 0)');
+      sunReflection.addColorStop(0.5, 'rgba(253, 224, 71, 0.45)');
+      sunReflection.addColorStop(1, 'rgba(249, 115, 22, 0)');
+      ctx.fillStyle = sunReflection;
+      ctx.fillRect(820, 1000, 280, 280);
+
+      // Simple reflection water lines
+      ctx.strokeStyle = 'rgba(253, 224, 71, 0.2)';
+      ctx.lineWidth = 1.5;
+      for (let rLine = 1010; rLine < 1260; rLine += 20) {
+        ctx.beginPath();
+        const width = (1280 - rLine) * 1.5;
+        ctx.moveTo(960 - width / 2, rLine);
+        ctx.lineTo(960 + width / 2, rLine);
+        ctx.stroke();
+      }
+    }
+    const img = new Image();
+    img.src = canvas.toDataURL('image/jpeg', 0.95);
+    return img;
+  };
+
   const loadSampleImage = () => {
     setIsLoadingFile(true);
     const img = new Image();
@@ -270,8 +360,20 @@ const App: React.FC = () => {
       setIsLoadingFile(false);
     };
     img.onerror = () => {
-      setIsLoadingFile(false);
-      alert("Failed to load sample image. Please verify your connection.");
+      console.log("No internet context: rendering gorgeous on-device procedural landscape sunset");
+      try {
+        const fallImg = createProceduralSampleImage();
+        fallImg.onload = () => {
+          setSourceImage(fallImg);
+          setIsRaw(false);
+          setImageState(DEFAULT_IMAGE_STATE);
+          setActiveMaskId(null);
+          setIsLoadingFile(false);
+        };
+      } catch (err) {
+        setIsLoadingFile(false);
+        alert("Failed to load sample image.");
+      }
     };
   };
 

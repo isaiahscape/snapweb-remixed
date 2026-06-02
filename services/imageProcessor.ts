@@ -1,11 +1,9 @@
 
 import { ImageState, ColorChannel, ColorAdjustment, MaskSettings, MaskLayer } from '../types';
+import UTIF from 'utif';
 
 // Helper to clamp values
 const clamp = (val: number, min: number, max: number) => Math.min(Math.max(val, min), max);
-
-// Declare global UTIF
-declare const UTIF: any;
 
 /**
  * Helper to convert a Blob to an HTMLImageElement

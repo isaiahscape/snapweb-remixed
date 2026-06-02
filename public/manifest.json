@@ -1,0 +1,21 @@
+{
+  "name": "Remix: SnapWeb Editor",
+  "short_name": "SnapWeb",
+  "description": "A powerful, browser-based photo editor inspired by Snapseed. Features on-device processing for privacy, speed, and 100% offline usage.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "icons": [
+    {
+      "src": "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 128' width='128' height='128'><rect width='128' height='128' rx='24' fill='%23171717'/><circle cx='64' cy='64' r='40' fill='none' stroke='%233b82f6' stroke-width='8'/><circle cx='64' cy='64' r='20' fill='%233b82f6'/></svg>",
+      "sizes": "128x128",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512' width='512' height='512'><rect width='512' height='512' rx='96' fill='%23171717'/><circle cx='256' cy='256' r='160' fill='none' stroke='%233b82f6' stroke-width='32'/><circle cx='256' cy='256' r='80' fill='%233b82f6'/></svg>",
+      "sizes": "512x512",
+      "type": "image/svg+xml"
+    }
+  ]
+}
