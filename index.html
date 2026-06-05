@@ -12,14 +12,28 @@
         height: 6px;
       }
       ::-webkit-scrollbar-track {
-        background: #000000; 
+        background: transparent; 
       }
-      ::-webkit-scrollbar-thumb {
-        background: #333333; 
+      
+      /* Default hidden custom-scrollbar */
+      .custom-scrollbar {
+        --scrollbar-thumb: transparent;
+        --scrollbar-thumb-hover: transparent;
+      }
+      
+      /* Show scrollbars when active scrolling or hovered */
+      .custom-scrollbar.is-scrolling,
+      .custom-scrollbar:hover {
+        --scrollbar-thumb: #333333;
+        --scrollbar-thumb-hover: #555555;
+      }
+      
+      .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: var(--scrollbar-thumb, transparent); 
         border-radius: 3px;
       }
-      ::-webkit-scrollbar-thumb:hover {
-        background: #555555; 
+      .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+        background: var(--scrollbar-thumb-hover, transparent); 
       }
       
       /* Range Slider Customization - Monochrome */

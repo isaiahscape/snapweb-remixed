@@ -1,8 +1,9 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { DEFAULT_IMAGE_STATE, ImageState, ColorChannel, ColorAdjustment, MaskLayer, DEFAULT_MASK_SETTINGS, DEFAULT_COLOR_GRADE } from './types';
+import { DEFAULT_IMAGE_STATE, ImageState, ColorChannel, ColorAdjustment, MaskLayer, DEFAULT_MASK_SETTINGS, DEFAULT_COLOR_GRADE, LOOKS_PRESETS, LookPreset } from './types';
 import { processImage, generateResultUrl, loadRawImage, getClosestColorChannel } from './services/imageProcessor';
 import Histogram from './components/Histogram';
+import { CurvesEditor } from './components/CurvesEditor';
 import { Slider, ToolButton, IconButton } from './components/Controls';
 import Cropper from './components/Cropper';
 import ColorMixer from './components/ColorMixer';
@@ -76,6 +77,42 @@ const App: React.FC = () => {
   });
   const [hideUI, setHideUI] = useState(false);
 
+  const [sidebarWidth, setSidebarWidth] = useState<number>(320);
+  const [isDraggingSidebar, setIsDraggingSidebar] = useState<boolean>(false);
+  const [isDesktop, setIsDesktop] = useState<boolean>(typeof window !== 'undefined' ? window.innerWidth >= 768 : true);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsDesktop(window.innerWidth >= 768);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  const handleSidebarMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsDraggingSidebar(true);
+    
+    const startX = e.clientX;
+    const startWidth = sidebarWidth;
+    
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const deltaX = moveEvent.clientX - startX;
+      const widthDelta = sidebarPosition === 'right' ? -deltaX : deltaX;
+      const newWidth = Math.max(260, Math.min(600, startWidth + widthDelta));
+      setSidebarWidth(newWidth);
+    };
+    
+    const handleMouseUp = () => {
+      setIsDraggingSidebar(false);
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+    
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  }, [sidebarWidth, sidebarPosition]);
+
   const toggleSidebarPosition = () => {
     const next = sidebarPosition === 'right' ? 'left' : 'right';
     setSidebarPosition(next);
@@ -136,6 +173,41 @@ const App: React.FC = () => {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [hideUI]);
+
+  // Dynamic Scrollbar autohide handler (3 seconds inactivity)
+  useEffect(() => {
+    const activeTimeouts = new Map<HTMLElement, any>();
+
+    const handleScroll = (e: Event) => {
+      const target = e.target as HTMLElement;
+      if (!target || !target.classList || !target.classList.contains('custom-scrollbar')) {
+        return;
+      }
+
+      // Add scrolling class to display scrollbar
+      target.classList.add('is-scrolling');
+
+      // Clear any pending autohide timeout for this element
+      if (activeTimeouts.has(target)) {
+        clearTimeout(activeTimeouts.get(target));
+      }
+
+      // Set timeout to hide the scrollbar after 3 seconds of inactivity
+      const timeout = setTimeout(() => {
+        target.classList.remove('is-scrolling');
+        activeTimeouts.delete(target);
+      }, 3000);
+
+      activeTimeouts.set(target, timeout);
+    };
+
+    // Capture phase listener to intercept all scroll events page-wide
+    document.addEventListener('scroll', handleScroll, true);
+    return () => {
+      document.removeEventListener('scroll', handleScroll, true);
+      activeTimeouts.forEach(timeout => clearTimeout(timeout));
+    };
+  }, []);
   
   // Color Mixer State
   const [activeColorChannel, setActiveColorChannel] = useState<ColorChannel>('red');
@@ -163,6 +235,17 @@ const App: React.FC = () => {
   const [showMaskOverlay, setShowMaskOverlay] = useState(true);
   const [isPainting, setIsPainting] = useState(false);
   const lastPaintPos = useRef<{x: number, y: number} | null>(null);
+
+  // Snapseed Tab-based & Tool States
+  const [activePanelTab, setActivePanelTab] = useState<'looks' | 'tune' | 'creative' | 'local' | 'geometry'>('tune');
+  const [appliedLookId, setAppliedLookId] = useState<string | null>(null);
+  const [isAddingSelective, setIsAddingSelective] = useState(false);
+  const [focusedSelectiveId, setFocusedSelectiveId] = useState<string | null>(null);
+  const [isHealingBrushActive, setIsHealingBrushActive] = useState(false);
+  const [isPaintingHealing, setIsPaintingHealing] = useState(false);
+  const [healingStrokeInProgress, setHealingStrokeInProgress] = useState<any | null>(null);
+  const [healingBrushSize, setHealingBrushSize] = useState(25);
+  const [draggingPointType, setDraggingPointType] = useState<{ type: 'selective' | 'lensBlur'; id?: string } | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayCanvasRef = useRef<HTMLCanvasElement>(null); // To show the red mask overlay
@@ -735,8 +818,51 @@ const App: React.FC = () => {
       if(confirm("Reset all edits to original?")) {
           setImageState(DEFAULT_IMAGE_STATE);
           setActiveMaskId(null);
+          setAppliedLookId(null);
       }
   }
+
+  const applyLook = (lookAdjustments: Partial<ImageState>, lookId: string) => {
+    setImageState(prev => ({
+      ...prev,
+      // Reset styling adjustments back to default before applying
+      rawTemperature: DEFAULT_IMAGE_STATE.rawTemperature,
+      rawTint: DEFAULT_IMAGE_STATE.rawTint,
+      rawExposureEV: DEFAULT_IMAGE_STATE.rawExposureEV,
+      rawHighlights: DEFAULT_IMAGE_STATE.rawHighlights,
+      rawShadows: DEFAULT_IMAGE_STATE.rawShadows,
+      rawProfile: DEFAULT_IMAGE_STATE.rawProfile,
+      
+      brightness: DEFAULT_IMAGE_STATE.brightness,
+      contrast: DEFAULT_IMAGE_STATE.contrast,
+      saturation: DEFAULT_IMAGE_STATE.saturation,
+      ambiance: DEFAULT_IMAGE_STATE.ambiance,
+      warmth: DEFAULT_IMAGE_STATE.warmth,
+      tint: DEFAULT_IMAGE_STATE.tint,
+      highlights: DEFAULT_IMAGE_STATE.highlights,
+      shadows: DEFAULT_IMAGE_STATE.shadows,
+      
+      structure: DEFAULT_IMAGE_STATE.structure,
+      sharpening: DEFAULT_IMAGE_STATE.sharpening,
+      dehaze: DEFAULT_IMAGE_STATE.dehaze,
+      grain: DEFAULT_IMAGE_STATE.grain,
+      vignette: DEFAULT_IMAGE_STATE.vignette,
+      colorGrade: { ...DEFAULT_IMAGE_STATE.colorGrade },
+      curves: { 
+        rgb: [...DEFAULT_IMAGE_STATE.curves.rgb],
+        r: [...DEFAULT_IMAGE_STATE.curves.r],
+        g: [...DEFAULT_IMAGE_STATE.curves.g],
+        b: [...DEFAULT_IMAGE_STATE.curves.b]
+      },
+      hdrScape: { ...DEFAULT_IMAGE_STATE.hdrScape },
+      grainyFilm: { ...DEFAULT_IMAGE_STATE.grainyFilm },
+      
+      // Merge Look values on top
+      ...lookAdjustments,
+    }));
+    setAppliedLookId(lookId);
+    showToast(`Applied Look: ${LOOKS_PRESETS.find(p => p.id === lookId)?.name || lookId}`, "success");
+  };
 
   const handleCopySettings = async () => {
     if (!sourceImage) return;
@@ -944,6 +1070,48 @@ const App: React.FC = () => {
   const handleMouseDown = (e: React.MouseEvent) => {
     if (!containerRef.current || !canvasRef.current) return;
 
+    // 0.0 Snapseed Selective Point Addition
+    if (isAddingSelective) {
+        const rect = canvasRef.current.getBoundingClientRect();
+        const percentX = ((e.clientX - rect.left) / rect.width) * 100;
+        const percentY = ((e.clientY - rect.top) / rect.height) * 100;
+        
+        const newPt = {
+            id: 'sel_' + Date.now(),
+            x: Math.max(0, Math.min(100, percentX)),
+            y: Math.max(0, Math.min(100, percentY)),
+            radius: 20, // default radius 20%
+            brightness: 0,
+            contrast: 0,
+            saturation: 0,
+            structure: 0
+        };
+        
+        setImageState(prev => ({
+            ...prev,
+            selectivePoints: [...(prev.selectivePoints || []), newPt]
+        }));
+        setFocusedSelectiveId(newPt.id);
+        setIsAddingSelective(false);
+        return;
+    }
+
+    // 0.1 Snapseed Healing Brush Stroke Start
+    if (isHealingBrushActive) {
+        setIsPaintingHealing(true);
+        const rect = canvasRef.current.getBoundingClientRect();
+        const percentX = ((e.clientX - rect.left) / rect.width) * 100;
+        const percentY = ((e.clientY - rect.top) / rect.height) * 100;
+        
+        const newStroke = {
+            id: 'heal_' + Date.now(),
+            points: [{ x: percentX, y: percentY }],
+            size: healingBrushSize
+        };
+        setHealingStrokeInProgress(newStroke);
+        return;
+    }
+
     // 0. Mask Painting Logic (Top Priority)
     if (activeMaskId) {
         // Prevent pan if we are painting, unless we hold space?
@@ -1024,6 +1192,54 @@ const App: React.FC = () => {
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
+    // 0.0 Dragging viewport points (Selective / Lens blur center)
+    if (draggingPointType && canvasRef.current) {
+        const rect = canvasRef.current.getBoundingClientRect();
+        const ptX = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
+        const ptY = Math.max(0, Math.min(100, ((e.clientY - rect.top) / rect.height) * 100));
+        
+        if (draggingPointType.type === 'selective') {
+            setImageState(prev => {
+                const list = (prev.selectivePoints || []).map(p => {
+                    if (p.id === draggingPointType.id) {
+                        return { ...p, x: ptX, y: ptY };
+                    }
+                    return p;
+                });
+                return { ...prev, selectivePoints: list };
+            });
+        } else if (draggingPointType.type === 'lensBlur') {
+            setImageState(prev => {
+                if (!prev.lensBlur) return prev;
+                return {
+                    ...prev,
+                    lensBlur: {
+                        ...prev.lensBlur,
+                        x: ptX,
+                        y: ptY
+                    }
+                };
+            });
+        }
+        return;
+    }
+
+    // 0.1 Healing draw
+    if (isPaintingHealing && healingStrokeInProgress && canvasRef.current) {
+        const rect = canvasRef.current.getBoundingClientRect();
+        const ptX = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
+        const ptY = Math.max(0, Math.min(100, ((e.clientY - rect.top) / rect.height) * 100));
+        
+        setHealingStrokeInProgress(prev => {
+            if (!prev) return null;
+            return {
+                ...prev,
+                points: [...prev.points, { x: ptX, y: ptY }]
+            };
+        });
+        return;
+    }
+
     // Painting
     if (isPainting && activeMaskId && containerRef.current && canvasRef.current) {
         const mask = imageState.masks.find(m => m.id === activeMaskId);
@@ -1070,6 +1286,25 @@ const App: React.FC = () => {
   };
 
   const handleMouseUp = () => {
+    // 0.0 Snapseed Viewport Point Drills Reset
+    if (draggingPointType) {
+        setDraggingPointType(null);
+        // Force state update to trigger image processing
+        setImageState(prev => ({ ...prev }));
+        return;
+    }
+
+    // 0.1 Snapseed Healing Brush Stroke Finish
+    if (isPaintingHealing && healingStrokeInProgress) {
+        setIsPaintingHealing(false);
+        setImageState(prev => ({
+            ...prev,
+            healingStrokes: [...(prev.healingStrokes || []), healingStrokeInProgress]
+        }));
+        setHealingStrokeInProgress(null);
+        return;
+    }
+
     if (isPainting) {
         setIsPainting(false);
         lastPaintPos.current = null;
@@ -1713,13 +1948,38 @@ const App: React.FC = () => {
         </main>
 
         {/* Sidebar Controls */}
-        <aside className={`w-full h-[340px] md:h-auto bg-[#050505] flex flex-col shrink-0 z-20 transition-all duration-300 ease-in-out
-          ${sidebarPosition === 'left' ? 'border-t md:border-t-0 md:border-r border-neutral-900' : 'border-t md:border-t-0 md:border-l border-neutral-900'}
-          ${hideUI 
-            ? 'h-0 md:h-auto md:w-0 md:opacity-0 overflow-hidden pointer-events-none' 
-            : 'w-full md:w-[320px] shadow-[0_-4px_24px_rgba(0,0,0,0.6)] md:shadow-none'
-          }
-        `}>
+        <aside 
+          style={isDesktop && !hideUI ? { width: `${sidebarWidth}px`, minWidth: '260px', maxWidth: '600px' } : undefined}
+          className={`w-full h-[340px] md:h-auto bg-[#050505] flex flex-col shrink-0 z-20 relative
+            ${isDraggingSidebar ? '' : 'transition-all duration-300 ease-in-out'}
+            ${sidebarPosition === 'left' ? 'border-t md:border-t-0 md:border-r border-neutral-900' : 'border-t md:border-t-0 md:border-l border-neutral-900'}
+            ${hideUI 
+              ? 'h-0 md:h-auto md:w-0 md:opacity-0 overflow-hidden pointer-events-none' 
+              : 'w-full md:w-[320px] shadow-[0_-4px_24px_rgba(0,0,0,0.6)] md:shadow-none'
+            }
+          `}
+        >
+          {/* Resize Handle - Only visible on desktop when UI is not hidden */}
+          {isDesktop && !hideUI && (
+            <div
+              onMouseDown={handleSidebarMouseDown}
+              className={`absolute top-0 bottom-0 w-2.5 cursor-col-resize z-50 group hover:bg-cyan-500/10 transition-all duration-150
+                ${sidebarPosition === 'left' 
+                  ? 'right-[-5px] active:right-[-7px]' 
+                  : 'left-[-5px] active:left-[-7px]'
+                }
+              `}
+              title="Drag to resize sidebar"
+            >
+              {/* Highlight bar visible on hover/active */}
+              <div className={`w-1 h-full mx-auto transition-all duration-150 rounded pointer-events-none
+                ${isDraggingSidebar 
+                  ? 'bg-cyan-500 w-1.5 shadow-[0_0_12px_rgba(6,182,212,0.8)]' 
+                  : 'bg-transparent group-hover:bg-neutral-800'
+                }
+              `} />
+            </div>
+          )}
             
             {/* Histogram */}
             <div className="p-4 border-b border-neutral-900 bg-black/50">
@@ -1727,10 +1987,179 @@ const App: React.FC = () => {
             </div>
 
             {/* Tools */}
+            {/* Elegant Snapseed horizontal control switch tab */}
+            <div className="grid grid-cols-5 gap-0.5 border-b border-neutral-900 bg-neutral-950 p-1 shrink-0 select-none">
+               {(['looks', 'tune', 'creative', 'local', 'geometry'] as const).map(tab => {
+                  const isActive = activePanelTab === tab;
+                  const labels = {
+                     looks: 'Looks',
+                     tune: 'Tune',
+                     creative: 'Creative',
+                     local: 'Local',
+                     geometry: 'Geometry'
+                  };
+                  return (
+                     <button
+                        key={tab}
+                        onClick={() => {
+                           setActivePanelTab(tab);
+                           setIsAddingSelective(false);
+                           setIsHealingBrushActive(false);
+                        }}
+                        className={`py-2 text-[10px] font-black uppercase tracking-wider rounded transition-all cursor-pointer text-center ${
+                           isActive 
+                              ? 'bg-neutral-800 text-white font-extrabold shadow-sm border border-neutral-700/50' 
+                              : 'text-neutral-500 hover:text-neutral-300'
+                        }`}
+                     >
+                        {labels[tab]}
+                     </button>
+                  );
+               })}
+            </div>
+
             <div className="flex-1 overflow-y-auto custom-scrollbar">
 
-                {/* CAMERA RAW DEVELOPER SECTION */}
-                <SidebarSection title="RAW Options" defaultOpen={isRaw}>
+                {activePanelTab === 'looks' && (
+                    <div className="p-4 space-y-4">
+                        <div className="flex justify-between items-center pb-2 border-b border-neutral-900">
+                            <div>
+                                <h3 className="text-xs font-black uppercase tracking-wider text-white">Choose a Look</h3>
+                                <p className="text-[9px] text-neutral-500 mt-0.5">Instant professional grade style baselines</p>
+                            </div>
+                            {appliedLookId && (
+                                <button
+                                    onClick={() => {
+                                      setImageState(prev => ({
+                                        ...prev,
+                                        rawTemperature: DEFAULT_IMAGE_STATE.rawTemperature,
+                                        rawTint: DEFAULT_IMAGE_STATE.rawTint,
+                                        rawExposureEV: DEFAULT_IMAGE_STATE.rawExposureEV,
+                                        rawHighlights: DEFAULT_IMAGE_STATE.rawHighlights,
+                                        rawShadows: DEFAULT_IMAGE_STATE.rawShadows,
+                                        rawProfile: DEFAULT_IMAGE_STATE.rawProfile,
+                                        brightness: DEFAULT_IMAGE_STATE.brightness,
+                                        contrast: DEFAULT_IMAGE_STATE.contrast,
+                                        saturation: DEFAULT_IMAGE_STATE.saturation,
+                                        ambiance: DEFAULT_IMAGE_STATE.ambiance,
+                                        warmth: DEFAULT_IMAGE_STATE.warmth,
+                                        tint: DEFAULT_IMAGE_STATE.tint,
+                                        highlights: DEFAULT_IMAGE_STATE.highlights,
+                                        shadows: DEFAULT_IMAGE_STATE.shadows,
+                                        structure: DEFAULT_IMAGE_STATE.structure,
+                                        sharpening: DEFAULT_IMAGE_STATE.sharpening,
+                                        dehaze: DEFAULT_IMAGE_STATE.dehaze,
+                                        grain: DEFAULT_IMAGE_STATE.grain,
+                                        vignette: DEFAULT_IMAGE_STATE.vignette,
+                                        colorGrade: { ...DEFAULT_IMAGE_STATE.colorGrade },
+                                        curves: { 
+                                          rgb: [...DEFAULT_IMAGE_STATE.curves.rgb],
+                                          r: [...DEFAULT_IMAGE_STATE.curves.r],
+                                          g: [...DEFAULT_IMAGE_STATE.curves.g],
+                                          b: [...DEFAULT_IMAGE_STATE.curves.b]
+                                        },
+                                        hdrScape: { ...DEFAULT_IMAGE_STATE.hdrScape },
+                                        grainyFilm: { ...DEFAULT_IMAGE_STATE.grainyFilm },
+                                      }));
+                                      setAppliedLookId(null);
+                                      showToast("Reverted look adjustments", "info");
+                                    }}
+                                    className="text-[9px] text-red-500 hover:text-red-400 font-extrabold uppercase bg-red-950/20 px-2 py-1 rounded border border-red-900/30 transition-all cursor-pointer"
+                                >
+                                    REVERT
+                                </button>
+                            )}
+                        </div>
+
+                        <div className="space-y-5 max-h-[calc(100vh-270px)] overflow-y-auto custom-scrollbar pr-1 pb-4">
+                            {/* Film Simulations Section */}
+                            <div>
+                                <div className="text-[9px] font-black uppercase tracking-wider text-cyan-400 mb-2 flex items-center gap-1.5 px-0.5 sticky top-0 bg-[#050505] py-1 z-10">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+                                    Film Simulations (New)
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                    {LOOKS_PRESETS.filter(p => p.id.startsWith('lkp') || p.id.startsWith('lfp') || p.id.startsWith('lfs')).map((preset) => {
+                                        const isSelected = appliedLookId === preset.id;
+                                        return (
+                                            <button
+                                                key={preset.id}
+                                                onClick={() => applyLook(preset.adjustments, preset.id)}
+                                                className={`group relative flex flex-col items-stretch text-left rounded-lg overflow-hidden border p-2 transition-all duration-250 cursor-pointer ${
+                                                    isSelected 
+                                                        ? 'bg-sky-500/10 border-sky-500/50 shadow-[0_4px_16px_rgba(14,165,233,0.15)] shadow-sky-500/10' 
+                                                        : 'bg-neutral-900/40 border-neutral-850 hover:bg-neutral-850/80 hover:border-neutral-700'
+                                                }`}
+                                            >
+                                                <div className="flex gap-2 items-center">
+                                                    <div className={`w-8 h-8 rounded shrink-0 bg-gradient-to-tr ${preset.gradient} shadow-md group-hover:scale-105 transition-transform duration-300`} />
+                                                    <div className="min-w-0">
+                                                        <div className="flex items-center gap-1">
+                                                            <span className={`text-[10px] font-extrabold uppercase tracking-wide truncate ${isSelected ? 'text-sky-400' : 'text-neutral-200'}`}>
+                                                                {preset.name}
+                                                            </span>
+                                                            {isSelected && (
+                                                                <span className="w-1.5 h-1.5 rounded-full bg-sky-400 inline-block font-sans animate-pulse" />
+                                                            )}
+                                                        </div>
+                                                        <div className="text-[8px] text-neutral-400 leading-normal line-clamp-2 mt-0.5" title={preset.description}>
+                                                            {preset.description}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
+                            {/* Classic Looks Section */}
+                            <div className="pt-1 border-t border-neutral-900">
+                                <div className="text-[9px] font-black uppercase tracking-wider text-neutral-400 mb-2 flex items-center gap-1.5 px-0.5 sticky top-0 bg-[#050505] py-1 z-10">
+                                    Classic Looks
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                    {LOOKS_PRESETS.filter(p => !p.id.startsWith('lkp') && !p.id.startsWith('lfp') && !p.id.startsWith('lfs')).map((preset) => {
+                                        const isSelected = appliedLookId === preset.id;
+                                        return (
+                                            <button
+                                                key={preset.id}
+                                                onClick={() => applyLook(preset.adjustments, preset.id)}
+                                                className={`group relative flex flex-col items-stretch text-left rounded-lg overflow-hidden border p-2 transition-all duration-250 cursor-pointer ${
+                                                    isSelected 
+                                                        ? 'bg-sky-500/10 border-sky-500/50 shadow-[0_4px_16px_rgba(14,165,233,0.15)] shadow-sky-500/10' 
+                                                        : 'bg-neutral-900/40 border-neutral-850 hover:bg-neutral-850/80 hover:border-neutral-700'
+                                                }`}
+                                            >
+                                                <div className="flex gap-2 items-center">
+                                                    <div className={`w-8 h-8 rounded shrink-0 bg-gradient-to-tr ${preset.gradient} shadow-md group-hover:scale-105 transition-transform duration-300`} />
+                                                    <div className="min-w-0">
+                                                        <div className="flex items-center gap-1">
+                                                            <span className={`text-[10px] font-extrabold uppercase tracking-wide truncate ${isSelected ? 'text-sky-400' : 'text-neutral-200'}`}>
+                                                                {preset.name}
+                                                            </span>
+                                                            {isSelected && (
+                                                                <span className="w-1.5 h-1.5 rounded-full bg-sky-400 inline-block font-sans animate-pulse" />
+                                                            )}
+                                                        </div>
+                                                        <div className="text-[8px] text-neutral-400 leading-normal line-clamp-2 mt-0.5" title={preset.description}>
+                                                            {preset.description}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {activePanelTab === 'tune' && (
+                    <>
+                        {/* CAMERA RAW DEVELOPER SECTION */}
+                        <SidebarSection title="RAW Options" defaultOpen={isRaw}>
                     {isRaw ? (
                         <div className="space-y-4">
                             <div className="bg-amber-500/10 border border-amber-500/20 rounded p-2.5 text-center">
@@ -1861,126 +2290,393 @@ const App: React.FC = () => {
                         </div>
                     )}
                 </SidebarSection>
+            </>
+        )}
                 
-                {/* SELECTIVE EDITING SECTION */}
-                <SidebarSection title="Selective Edits (Masks)" defaultOpen={!!activeMaskId}>
-                    <div className="flex gap-2 mb-4">
-                         <button 
-                            onClick={addMask}
-                            className="flex-1 bg-neutral-800 hover:bg-neutral-700 text-white py-2 rounded text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-colors"
-                        >
-                            <div className="w-4 h-4">{Icons.Plus}</div> Add Mask
-                        </button>
-                    </div>
-
-                    <div className="space-y-2 mb-4">
-                        {imageState.masks.map(mask => (
-                            <div 
-                                key={mask.id} 
-                                className={`
-                                    group flex items-center justify-between p-2 rounded border cursor-pointer transition-all
-                                    ${activeMaskId === mask.id ? 'bg-neutral-800 border-blue-500' : 'border-neutral-800 hover:border-neutral-600'}
-                                `}
-                                onClick={() => setActiveMaskId(mask.id)}
-                            >
-                                <div className="flex items-center gap-3">
-                                    <button 
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            setImageState(prev => ({
-                                                ...prev,
-                                                masks: prev.masks.map(m => m.id === mask.id ? { ...m, isVisible: !m.isVisible } : m)
-                                            }));
+        {activePanelTab === 'local' && (
+            <>
+                        {/* Snapseed Selective Control Points */}
+                        <SidebarSection title="Selective Grid Points" defaultOpen={true}>
+                            <div className="space-y-4">
+                                <div className="flex justify-between items-center bg-neutral-905 p-2 rounded border border-neutral-900">
+                                    <span className="text-[10px] font-extrabold uppercase tracking-widest text-neutral-400 font-mono">
+                                        Selective Node Tool
+                                    </span>
+                                    <button
+                                        onClick={() => {
+                                            setIsAddingSelective(!isAddingSelective);
+                                            if (!isAddingSelective) {
+                                                setIsHealingBrushActive(false);
+                                            }
                                         }}
-                                        className={`w-4 h-4 ${mask.isVisible ? 'text-white' : 'text-neutral-600'}`}
+                                        className={`px-2.5 py-1 text-[9px] font-black uppercase rounded transition-colors cursor-pointer ${
+                                            isAddingSelective ? 'bg-sky-500 text-white font-extrabold animate-pulse' : 'bg-neutral-900 text-neutral-400 hover:text-white font-semibold'
+                                        }`}
                                     >
-                                        {mask.isVisible ? Icons.Eye : Icons.EyeOff}
+                                        {isAddingSelective ? 'TAP PHOTO' : 'ADD POINT'}
                                     </button>
-                                    <span className="text-xs font-bold text-neutral-300">{mask.name}</span>
                                 </div>
+
+                                {imageState.selectivePoints && imageState.selectivePoints.length > 0 ? (
+                                    <div className="space-y-3">
+                                        <div className="max-h-24 overflow-y-auto border border-neutral-900 rounded bg-neutral-950/20 p-2 custom-scrollbar flex flex-wrap gap-1.5">
+                                            {imageState.selectivePoints.map((pt, idx) => {
+                                                const isFocused = pt.id === focusedSelectiveId;
+                                                return (
+                                                    <div
+                                                        key={pt.id}
+                                                        onClick={() => setFocusedSelectiveId(pt.id)}
+                                                        className={`px-2.5 py-1 rounded text-[9px] font-extrabold cursor-pointer transition-all flex items-center gap-1.5 border ${
+                                                            isFocused ? 'bg-sky-500/20 text-sky-400 border-sky-500/40 font-semibold' : 'bg-neutral-900 text-neutral-400 border-transparent'
+                                                        }`}
+                                                    >
+                                                        <span>Point {idx + 1}</span>
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setImageState(prev => ({
+                                                                    ...prev,
+                                                                    selectivePoints: (prev.selectivePoints || []).filter(p => p.id !== pt.id)
+                                                                }));
+                                                                if (focusedSelectiveId === pt.id) setFocusedSelectiveId(null);
+                                                            }}
+                                                            className="hover:text-red-500 transition-colors cursor-pointer font-bold inline-block ml-0.5"
+                                                        >
+                                                            ✕
+                                                        </button>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+
+                                        {focusedSelectiveId && (
+                                            <div className="bg-neutral-950/40 border border-neutral-900 p-3 rounded space-y-3.5">
+                                                <div className="text-[9px] font-extrabold uppercase tracking-widest text-sky-400 mb-1">
+                                                    Adjusting Selected Node
+                                                </div>
+                                                {(() => {
+                                                    const pt = (imageState.selectivePoints || []).find(p => p.id === focusedSelectiveId);
+                                                    if (!pt) return null;
+                                                    return (
+                                                        <>
+                                                            <Slider
+                                                                label="Control Radius"
+                                                                min={5}
+                                                                max={100}
+                                                                suffix="%"
+                                                                value={pt.radius}
+                                                                onChange={(val) => {
+                                                                    setImageState(prev => ({
+                                                                        ...prev,
+                                                                        selectivePoints: (prev.selectivePoints || []).map(p => 
+                                                                            p.id === focusedSelectiveId ? { ...p, radius: val } : p
+                                                                        )
+                                                                    }));
+                                                                }}
+                                                                onReset={() => {
+                                                                    setImageState(prev => ({
+                                                                        ...prev,
+                                                                        selectivePoints: (prev.selectivePoints || []).map(p => 
+                                                                            p.id === focusedSelectiveId ? { ...p, radius: 20 } : p
+                                                                        )
+                                                                    }));
+                                                                }}
+                                                            />
+                                                            <Slider
+                                                                label="Brightness (B)"
+                                                                min={-100}
+                                                                max={100}
+                                                                value={pt.brightness}
+                                                                onChange={(val) => {
+                                                                    setImageState(prev => ({
+                                                                        ...prev,
+                                                                        selectivePoints: (prev.selectivePoints || []).map(p => 
+                                                                            p.id === focusedSelectiveId ? { ...p, brightness: val } : p
+                                                                        )
+                                                                    }));
+                                                                }}
+                                                                onReset={() => {
+                                                                    setImageState(prev => ({
+                                                                        ...prev,
+                                                                        selectivePoints: (prev.selectivePoints || []).map(p => 
+                                                                            p.id === focusedSelectiveId ? { ...p, brightness: 0 } : p
+                                                                        )
+                                                                    }));
+                                                                }}
+                                                            />
+                                                            <Slider
+                                                                label="Contrast (C)"
+                                                                min={-100}
+                                                                max={100}
+                                                                value={pt.contrast}
+                                                                onChange={(val) => {
+                                                                    setImageState(prev => ({
+                                                                        ...prev,
+                                                                        selectivePoints: (prev.selectivePoints || []).map(p => 
+                                                                            p.id === focusedSelectiveId ? { ...p, contrast: val } : p
+                                                                        )
+                                                                    }));
+                                                                }}
+                                                                onReset={() => {
+                                                                    setImageState(prev => ({
+                                                                        ...prev,
+                                                                        selectivePoints: (prev.selectivePoints || []).map(p => 
+                                                                            p.id === focusedSelectiveId ? { ...p, contrast: 0 } : p
+                                                                        )
+                                                                    }));
+                                                                }}
+                                                            />
+                                                            <Slider
+                                                                label="Saturation (S)"
+                                                                min={-100}
+                                                                max={100}
+                                                                value={pt.saturation}
+                                                                onChange={(val) => {
+                                                                    setImageState(prev => ({
+                                                                        ...prev,
+                                                                        selectivePoints: (prev.selectivePoints || []).map(p => 
+                                                                            p.id === focusedSelectiveId ? { ...p, saturation: val } : p
+                                                                        )
+                                                                    }));
+                                                                }}
+                                                                onReset={() => {
+                                                                    setImageState(prev => ({
+                                                                        ...prev,
+                                                                        selectivePoints: (prev.selectivePoints || []).map(p => 
+                                                                            p.id === focusedSelectiveId ? { ...p, saturation: 0 } : p
+                                                                        )
+                                                                    }));
+                                                                }}
+                                                            />
+                                                            <Slider
+                                                                label="Structure (St)"
+                                                                min={-100}
+                                                                max={100}
+                                                                value={pt.structure}
+                                                                onChange={(val) => {
+                                                                    setImageState(prev => ({
+                                                                        ...prev,
+                                                                        selectivePoints: (prev.selectivePoints || []).map(p => 
+                                                                            p.id === focusedSelectiveId ? { ...p, structure: val } : p
+                                                                        )
+                                                                    }));
+                                                                }}
+                                                                onReset={() => {
+                                                                    setImageState(prev => ({
+                                                                        ...prev,
+                                                                        selectivePoints: (prev.selectivePoints || []).map(p => 
+                                                                            p.id === focusedSelectiveId ? { ...p, structure: 0 } : p
+                                                                        )
+                                                                    }));
+                                                                }}
+                                                            />
+                                                        </>
+                                                    );
+                                                })()}
+                                            </div>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <div className="text-[10px] text-neutral-500 text-center leading-relaxed py-1">
+                                        Click point placement then tap the workspace image to fine-tune local colors.
+                                    </div>
+                                )}
+                            </div>
+                        </SidebarSection>
+
+                        {/* Snapseed Healing Brush */}
+                        <SidebarSection title="Blemish Healing Stamp" defaultOpen={true}>
+                            <div className="space-y-4">
+                                <div className="flex justify-between items-center bg-neutral-905 p-2 rounded border border-neutral-900">
+                                    <span className="text-[10px] font-extrabold uppercase tracking-widest text-neutral-400 font-mono">
+                                        Spot Healing Brush
+                                    </span>
+                                    <button
+                                        onClick={() => {
+                                            setIsHealingBrushActive(!isHealingBrushActive);
+                                            if (!isHealingBrushActive) {
+                                                setIsAddingSelective(false);
+                                                setActiveMaskId(null); 
+                                            }
+                                        }}
+                                        className={`px-2.5 py-1 text-[9px] font-black uppercase rounded cursor-pointer transition-colors ${
+                                            isHealingBrushActive ? 'bg-sky-500 text-white font-extrabold' : 'bg-neutral-900 text-neutral-400 hover:text-white'
+                                        }`}
+                                    >
+                                        {isHealingBrushActive ? 'ON' : 'OFF'}
+                                    </button>
+                                </div>
+
+                                {isHealingBrushActive && (
+                                    <div className="space-y-3.5 mt-1 bg-neutral-950/20 border border-neutral-900 p-3 rounded">
+                                        <Slider
+                                            label="Healing Stamp Diameter"
+                                            min={5}
+                                            max={85}
+                                            value={healingBrushSize}
+                                            onChange={(val) => setHealingBrushSize(val)}
+                                        />
+                                        <div className="text-[9px] text-neutral-400 leading-relaxed text-center py-1 bg-black/45 border border-neutral-900 rounded select-none">
+                                            Paint blemishes or dust flecks over to remove them.
+                                        </div>
+                                    </div>
+                                )}
+
+                                {imageState.healingStrokes && imageState.healingStrokes.length > 0 && (
+                                    <div className="flex justify-between items-center bg-sky-950/10 border border-sky-500/20 px-3 py-1.5 rounded">
+                                        <span className="text-[9px] font-bold text-sky-400">
+                                            {imageState.healingStrokes.length} Spots Healed
+                                        </span>
+                                        <button
+                                            onClick={() => {
+                                                setImageState(prev => ({
+                                                    ...prev,
+                                                    healingStrokes: (prev.healingStrokes || []).slice(0, -1)
+                                                }));
+                                            }}
+                                            className="text-[9px] font-black uppercase text-red-400 hover:text-red-300 transition-colors cursor-pointer"
+                                            title="Undo most recent spot correction"
+                                        >
+                                            Undo Spot
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        </SidebarSection>
+
+                        {/* SELECTIVE EDITING SECTION */}
+                        <SidebarSection title="Selective Edits (Masks)" defaultOpen={!!activeMaskId}>
+                            <div className="flex gap-2 mb-4">
                                 <button 
-                                    onClick={(e) => { e.stopPropagation(); removeMask(mask.id); }}
-                                    className="text-neutral-600 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                                    onClick={addMask}
+                                    className="flex-1 bg-neutral-800 hover:bg-neutral-700 text-white py-2 rounded text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-colors cursor-pointer"
                                 >
-                                    <div className="w-4 h-4">{Icons.Trash}</div>
+                                    <div className="w-4 h-4">{Icons.Plus}</div> Add Mask
                                 </button>
                             </div>
-                        ))}
-                    </div>
 
-                    {activeMask && (
-                        <div className="bg-neutral-900/30 rounded p-3 border border-neutral-800 animate-slideDown">
-                            <div className="text-[10px] font-bold uppercase text-blue-400 mb-3 border-b border-neutral-800 pb-1">
-                                Brush Settings
-                            </div>
-                            
-                            {/* Brush Controls */}
-                            <div className="flex gap-2 mb-3">
-                                <button 
-                                    onClick={() => setIsErasing(false)}
-                                    className={`flex-1 py-1 text-[10px] font-bold uppercase rounded ${!isErasing ? 'bg-blue-600 text-white' : 'bg-neutral-800 text-neutral-400'}`}
-                                >
-                                    Paint
-                                </button>
-                                <button 
-                                    onClick={() => setIsErasing(true)}
-                                    className={`flex-1 py-1 text-[10px] font-bold uppercase rounded ${isErasing ? 'bg-red-600 text-white' : 'bg-neutral-800 text-neutral-400'}`}
-                                >
-                                    Erase
-                                </button>
-                            </div>
-                            
-                            <div className="flex items-center justify-between mb-3">
-                                 <label className="flex items-center gap-2 text-[10px] uppercase font-bold text-neutral-400 cursor-pointer">
-                                     <input 
-                                        type="checkbox" 
-                                        checked={showMaskOverlay} 
-                                        onChange={(e) => setShowMaskOverlay(e.target.checked)}
-                                        className="w-3 h-3 bg-neutral-800 border-neutral-600 rounded"
-                                     />
-                                     Show Overlay
-                                 </label>
+                            <div className="space-y-2 mb-4">
+                                {imageState.masks.map(mask => (
+                                    <div 
+                                        key={mask.id} 
+                                        className={`
+                                            group flex items-center justify-between p-2 rounded border cursor-pointer transition-all
+                                            ${activeMaskId === mask.id ? 'bg-neutral-800 border-blue-500' : 'border-neutral-800 hover:border-neutral-600'}
+                                        `}
+                                        onClick={() => {
+                                            setActiveMaskId(mask.id);
+                                            setIsHealingBrushActive(false);
+                                            setIsAddingSelective(false);
+                                        }}
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <button 
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setImageState(prev => ({
+                                                        ...prev,
+                                                        masks: prev.masks.map(m => m.id === mask.id ? { ...m, isVisible: !m.isVisible } : m)
+                                                    }));
+                                                }}
+                                                className={`w-4 h-4 cursor-pointer hover:scale-105 transition-transform ${mask.isVisible ? 'text-white' : 'text-neutral-600'}`}
+                                            >
+                                                {mask.isVisible ? Icons.Eye : Icons.EyeOff}
+                                            </button>
+                                            <input 
+                                                type="text" 
+                                                value={mask.name}
+                                                onChange={(e) => updateMaskName(mask.id, e.target.value)}
+                                                onClick={(e) => e.stopPropagation()}
+                                                className="bg-transparent text-xs font-bold text-white border-b border-transparent hover:border-neutral-600 focus:border-blue-500 focus:outline-none w-24 py-0"
+                                            />
+                                        </div>
+                                        <button 
+                                            onClick={(e) => { e.stopPropagation(); removeMask(mask.id); }}
+                                            className="text-neutral-600 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                                        >
+                                            <div className="w-4 h-4">{Icons.Trash}</div>
+                                        </button>
+                                    </div>
+                                ))}
                             </div>
 
-                            <Slider label="Brush Size" min={5} max={200} value={brushSize} onChange={setBrushSize} />
-                            <Slider label="Softness" min={0} max={100} value={100 - brushHardness} onChange={(v) => setBrushHardness(100 - v)} />
+                            {activeMask && (
+                                <div className="bg-neutral-900/30 rounded p-3 border border-neutral-800 animate-slideDown">
+                                    <div className="text-[10px] font-bold uppercase text-blue-400 mb-3 border-b border-neutral-800 pb-1">
+                                        Brush Settings
+                                    </div>
+                                    
+                                    {/* Brush Controls */}
+                                    <div className="flex gap-2 mb-3">
+                                        <button 
+                                            onClick={() => setIsErasing(false)}
+                                            className={`flex-1 py-1 text-[10px] font-bold uppercase rounded cursor-pointer transition-colors ${!isErasing ? 'bg-blue-600 text-white font-extrabold' : 'bg-neutral-800 text-neutral-400 hover:text-white'}`}
+                                        >
+                                            Paint
+                                        </button>
+                                        <button 
+                                            onClick={() => setIsErasing(true)}
+                                            className={`flex-1 py-1 text-[10px] font-bold uppercase rounded cursor-pointer transition-colors ${isErasing ? 'bg-red-650 text-white font-extrabold' : 'bg-neutral-800 text-neutral-400 hover:text-white'}`}
+                                        >
+                                            Erase
+                                        </button>
+                                    </div>
+                                    
+                                    <div className="flex items-center justify-between mb-3">
+                                         <label className="flex items-center gap-2 text-[10px] uppercase font-bold text-neutral-400 cursor-pointer select-none">
+                                             <input 
+                                                type="checkbox" 
+                                                checked={showMaskOverlay} 
+                                                onChange={(e) => setShowMaskOverlay(e.target.checked)}
+                                                className="w-3 h-3 bg-neutral-800 border-neutral-600 rounded cursor-pointer"
+                                             />
+                                             Show Overlay
+                                         </label>
+                                    </div>
 
-                            <div className="text-[10px] font-bold uppercase text-blue-400 mt-4 mb-2 border-b border-neutral-800 pb-1">
-                                Mask Adjustments
-                            </div>
-                            <Slider label="Exposure" min={-100} max={100} value={activeMask.settings.exposure} onChange={(v) => updateMaskSettings(activeMask.id, 'exposure', v)} />
-                            <Slider label="Brightness" min={-100} max={100} value={activeMask.settings.brightness} onChange={(v) => updateMaskSettings(activeMask.id, 'brightness', v)} />
-                            <Slider label="Contrast" min={-100} max={100} value={activeMask.settings.contrast} onChange={(v) => updateMaskSettings(activeMask.id, 'contrast', v)} />
-                            <Slider label="Saturation" min={-100} max={100} value={activeMask.settings.saturation} onChange={(v) => updateMaskSettings(activeMask.id, 'saturation', v)} />
-                            <Slider label="Warmth" min={-100} max={100} value={activeMask.settings.warmth} onChange={(v) => updateMaskSettings(activeMask.id, 'warmth', v)} />
-                            <Slider label="Structure" min={0} max={100} value={activeMask.settings.structure} onChange={(v) => updateMaskSettings(activeMask.id, 'structure', v)} />
-                            
-                            <div className="text-[10px] font-bold uppercase text-blue-400 mt-4 mb-2 border-b border-neutral-800 pb-1">
-                                Color Mixer
-                            </div>
-                            <ColorMixer 
-                                colorGrade={activeMask.settings.colorGrade}
-                                activeChannel={activeColorChannel}
-                                isPickerActive={isColorPickerActive}
-                                onChannelSelect={setActiveColorChannel}
-                                onChange={updateMaskColorGrade}
-                                onTogglePicker={() => {
-                                    setIsColorPickerActive(!isColorPickerActive);
-                                    setIsStraightenToolActive(false);
-                                }}
-                            />
+                                    <Slider label="Brush Size" min={5} max={200} value={brushSize} onChange={setBrushSize} />
+                                    <Slider label="Softness" min={0} max={100} value={100 - brushHardness} onChange={(v) => setBrushHardness(100 - v)} />
 
-                            <button 
-                                onClick={() => setActiveMaskId(null)}
-                                className="w-full mt-4 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 py-2 rounded text-xs font-bold uppercase"
-                            >
-                                Done / Apply
-                            </button>
-                        </div>
-                    )}
-                </SidebarSection>
+                                    <div className="text-[10px] font-bold uppercase text-blue-400 mt-4 mb-2 border-b border-neutral-800 pb-1">
+                                        Mask Adjustments
+                                    </div>
+                                    <Slider label="Exposure" min={-100} max={100} value={activeMask.settings.exposure} onChange={(v) => updateMaskSettings(activeMask.id, 'exposure', v)} />
+                                    <Slider label="Brightness" min={-100} max={100} value={activeMask.settings.brightness} onChange={(v) => updateMaskSettings(activeMask.id, 'brightness', v)} />
+                                    <Slider label="Contrast" min={-100} max={100} value={activeMask.settings.contrast} onChange={(v) => updateMaskSettings(activeMask.id, 'contrast', v)} />
+                                    <Slider label="Saturation" min={-100} max={100} value={activeMask.settings.saturation} onChange={(v) => updateMaskSettings(activeMask.id, 'saturation', v)} />
+                                    <Slider label="Warmth" min={-100} max={100} value={activeMask.settings.warmth} onChange={(v) => updateMaskSettings(activeMask.id, 'warmth', v)} />
+                                    <Slider label="Structure" min={0} max={100} value={activeMask.settings.structure} onChange={(v) => updateMaskSettings(activeMask.id, 'structure', v)} />
+                                    
+                                    <div className="text-[10px] font-bold uppercase text-blue-400 mt-4 mb-2 border-b border-neutral-800 pb-1">
+                                        Color Mixer
+                                    </div>
+                                    <ColorMixer 
+                                        colorGrade={activeMask.settings.colorGrade}
+                                        activeChannel={activeColorChannel}
+                                        isPickerActive={isColorPickerActive}
+                                        onChannelSelect={setActiveColorChannel}
+                                        onChange={updateMaskColorGrade}
+                                        onTogglePicker={() => {
+                                            setIsColorPickerActive(!isColorPickerActive);
+                                            setIsStraightenToolActive(false);
+                                        }}
+                                    />
 
-                <SidebarSection title="Global: Light & Color">
+                                    <button 
+                                        onClick={() => setActiveMaskId(null)}
+                                        className="w-full mt-4 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 py-2 rounded text-xs font-bold uppercase cursor-pointer"
+                                    >
+                                        Done / Apply Area
+                                    </button>
+                                </div>
+                            )}
+                        </SidebarSection>
+                    </>
+                )}
+
+                {activePanelTab === 'tune' && (
+                    <>
+                        <SidebarSection title="Global: Light & Color">
                     <Slider label="Exposure" min={-100} max={100} value={imageState.brightness} onChange={(v) => updateState('brightness', v)} onReset={() => updateState('brightness', 0)} />
                     <Slider label="Contrast" min={-100} max={100} value={imageState.contrast} onChange={(v) => updateState('contrast', v)} onReset={() => updateState('contrast', 0)} />
                     <Slider label="Highlights" min={-100} max={100} value={imageState.highlights} onChange={(v) => updateState('highlights', v)} onReset={() => updateState('highlights', 0)} />
@@ -2007,88 +2703,509 @@ const App: React.FC = () => {
                     />
                 </SidebarSection>
 
-                <SidebarSection title="Global: Details & Effects">
-                    <Slider label="Structure" min={0} max={100} value={imageState.structure} onChange={(v) => updateState('structure', v)} onReset={() => updateState('structure', 0)} />
-                    <Slider label="Sharpening" min={0} max={100} value={imageState.sharpening} onChange={(v) => updateState('sharpening', v)} onReset={() => updateState('sharpening', 0)} />
-                    <Slider label="Dehaze" min={0} max={100} value={imageState.dehaze} onChange={(v) => updateState('dehaze', v)} onReset={() => updateState('dehaze', 0)} />
-                    <div className="h-px bg-neutral-900 my-2"></div>
-                    <Slider label="Grain" min={0} max={100} value={imageState.grain} onChange={(v) => updateState('grain', v)} onReset={() => updateState('grain', 0)} />
-                    <Slider label="Vignette" min={0} max={100} value={imageState.vignette} onChange={(v) => updateState('vignette', v)} onReset={() => updateState('vignette', 0)} />
+                {/* HDR Scape Tool */}
+                <SidebarSection title="HDR Scape" defaultOpen={(imageState.hdrScape?.strength || 0) > 0}>
+                    <div className="space-y-4">
+                        <div className="grid grid-cols-4 gap-1 bg-neutral-900 p-1 rounded border border-neutral-800">
+                            {(['Nature', 'People', 'Fine', 'Strong'] as const).map(style => {
+                                const isSel = (imageState.hdrScape?.style || 'Nature') === style;
+                                return (
+                                    <button
+                                        key={style}
+                                        onClick={() => {
+                                            setImageState(prev => ({
+                                                ...prev,
+                                                hdrScape: {
+                                                    ...(prev.hdrScape || { strength: 0, brightness: 0, saturation: 0, style: 'Nature' }),
+                                                    style
+                                                }
+                                            }));
+                                        }}
+                                        className={`py-1 text-[8px] font-black rounded text-center transition-colors cursor-pointer ${
+                                            isSel ? 'bg-sky-500 text-white font-extrabold' : 'text-neutral-400 hover:text-white bg-neutral-950/40'
+                                        }`}
+                                    >
+                                        {style}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        
+                        <div className="space-y-3">
+                            <Slider
+                                label="Filter Strength"
+                                min={0}
+                                max={100}
+                                value={imageState.hdrScape?.strength || 0}
+                                suffix="%"
+                                onChange={(val) => {
+                                    setImageState(prev => ({
+                                        ...prev,
+                                        hdrScape: {
+                                            ...(prev.hdrScape || { strength: 0, brightness: 0, saturation: 0, style: 'Nature' }),
+                                            strength: val
+                                        }
+                                    }));
+                                }}
+                                onReset={() => {
+                                    setImageState(prev => ({
+                                        ...prev,
+                                        hdrScape: {
+                                            ...(prev.hdrScape || { strength: 0, brightness: 0, saturation: 0, style: 'Nature' }),
+                                            strength: 0
+                                        }
+                                    }));
+                                }}
+                            />
+                            <Slider
+                                label="HDR Brightness"
+                                min={-100}
+                                max={100}
+                                value={imageState.hdrScape?.brightness || 0}
+                                onChange={(val) => {
+                                    setImageState(prev => ({
+                                        ...prev,
+                                        hdrScape: {
+                                            ...(prev.hdrScape || { strength: 0, brightness: 0, saturation: 0, style: 'Nature' }),
+                                            brightness: val
+                                        }
+                                    }));
+                                }}
+                                onReset={() => {
+                                    setImageState(prev => ({
+                                        ...prev,
+                                        hdrScape: {
+                                            ...(prev.hdrScape || { strength: 0, brightness: 0, saturation: 0, style: 'Nature' }),
+                                            brightness: 0
+                                        }
+                                    }));
+                                }}
+                            />
+                            <Slider
+                                label="HDR Saturation"
+                                min={-100}
+                                max={100}
+                                value={imageState.hdrScape?.saturation || 0}
+                                onChange={(val) => {
+                                    setImageState(prev => ({
+                                        ...prev,
+                                        hdrScape: {
+                                            ...(prev.hdrScape || { strength: 0, brightness: 0, saturation: 0, style: 'Nature' }),
+                                            saturation: val
+                                        }
+                                    }));
+                                }}
+                                onReset={() => {
+                                    setImageState(prev => ({
+                                        ...prev,
+                                        hdrScape: {
+                                            ...(prev.hdrScape || { strength: 0, brightness: 0, saturation: 0, style: 'Nature' }),
+                                            saturation: 0
+                                        }
+                                    }));
+                                }}
+                            />
+                        </div>
+                    </div>
                 </SidebarSection>
+            </>
+        )}
 
-                <SidebarSection title="Geometry" defaultOpen={false}>
-                    <div className="mb-6">
-                        <div className="flex items-center justify-between mb-3">
-                            <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-400">Angle / Straighten</span>
-                            <div className="flex gap-2">
+                {activePanelTab === 'creative' && (
+                    <>
+                        {/* Curves Tone Splines */}
+                        <CurvesEditor
+                            curves={imageState.curves || { rgb: [{x:0,y:0},{x:1,y:1}], r:[{x:0,y:0},{x:1,y:1}], g:[{x:0,y:0},{x:1,y:1}], b:[{x:0,y:0},{x:1,y:1}] }}
+                            onChange={(curves) => {
+                                setImageState(prev => ({
+                                    ...prev,
+                                    curves
+                                }));
+                            }}
+                        />
+
+                        {/* Lens Blur Tool */}
+                        <SidebarSection title="Lens Blur (Tilt Shift)" defaultOpen={imageState.lensBlur?.enabled}>
+                            <div className="space-y-4">
+                                <div className="flex justify-between items-center bg-neutral-905 p-2 rounded border border-neutral-900">
+                                    <span className="text-[10px] font-extrabold uppercase tracking-widest text-neutral-400">
+                                        Depth Field Blur
+                                    </span>
+                                    <button
+                                        onClick={() => {
+                                            setImageState(prev => ({
+                                                ...prev,
+                                                lensBlur: {
+                                                    ...(prev.lensBlur || { enabled: false, x: 50, y: 50, blurRadius: 30, transitionSize: 20, innerRadius: 15, vignette: 10, shape: 'circular', angle: 0 }),
+                                                    enabled: !prev.lensBlur?.enabled
+                                                }
+                                            }));
+                                        }}
+                                        className={`px-2.5 py-1 text-[9px] font-black uppercase rounded cursor-pointer transition-colors ${
+                                            imageState.lensBlur?.enabled ? 'bg-sky-500 text-white font-extrabold' : 'bg-neutral-900 text-neutral-400 hover:text-white'
+                                        }`}
+                                    >
+                                        {imageState.lensBlur?.enabled ? 'ON' : 'OFF'}
+                                    </button>
+                                </div>
+
+                                {imageState.lensBlur?.enabled && (
+                                    <div className="space-y-3 mt-1">
+                                        <div className="flex gap-2 items-center justify-between py-1 border-b border-neutral-900">
+                                            <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest">Blur Shape</span>
+                                            <div className="flex gap-1">
+                                                {(['circular', 'linear'] as const).map(shape => {
+                                                    const isSel = (imageState.lensBlur?.shape || 'circular') === shape;
+                                                    return (
+                                                        <button
+                                                            key={shape}
+                                                            onClick={() => {
+                                                                setImageState(prev => ({
+                                                                    ...prev,
+                                                                    lensBlur: {
+                                                                        ...(prev.lensBlur || { enabled: false, x: 50, y: 50, blurRadius: 30, transitionSize: 20, innerRadius: 15, vignette: 10, shape: 'circular', angle: 0 }),
+                                                                        shape
+                                                                    }
+                                                                }));
+                                                            }}
+                                                            className={`px-2 py-0.5 text-[8.5px] font-extrabold uppercase rounded transition-colors cursor-pointer ${
+                                                                isSel ? 'bg-sky-500 text-white' : 'text-neutral-400 hover:text-white bg-neutral-900 border border-neutral-800'
+                                                            }`}
+                                                        >
+                                                            {shape === 'circular' ? 'Radial' : 'Linear'}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+
+                                        <Slider
+                                            label="Blur Strength"
+                                            min={0}
+                                            max={100}
+                                            value={imageState.lensBlur?.blurRadius || 0}
+                                            onChange={(val) => {
+                                                setImageState(prev => ({
+                                                    ...prev,
+                                                    lensBlur: {
+                                                        ...(prev.lensBlur || { enabled: false, x: 50, y: 50, blurRadius: 30, transitionSize: 20, innerRadius: 15, vignette: 10, shape: 'circular', angle: 0 }),
+                                                        blurRadius: val
+                                                    }
+                                                }));
+                                            }}
+                                            onReset={() => {
+                                                setImageState(prev => ({
+                                                    ...prev,
+                                                    lensBlur: {
+                                                        ...(prev.lensBlur || { enabled: false, x: 50, y: 50, blurRadius: 30, transitionSize: 20, innerRadius: 15, vignette: 10, shape: 'circular', angle: 0 }),
+                                                        blurRadius: 0
+                                                    }
+                                                }));
+                                            }}
+                                        />
+
+                                        <Slider
+                                            label="Inner Mask Size"
+                                            min={0}
+                                            max={100}
+                                            value={imageState.lensBlur?.innerRadius || 0}
+                                            onChange={(val) => {
+                                                setImageState(prev => ({
+                                                    ...prev,
+                                                    lensBlur: {
+                                                        ...(prev.lensBlur || { enabled: false, x: 50, y: 50, blurRadius: 30, transitionSize: 20, innerRadius: 15, vignette: 10, shape: 'circular', angle: 0 }),
+                                                        innerRadius: val
+                                                    }
+                                                }));
+                                            }}
+                                            onReset={() => {
+                                                setImageState(prev => ({
+                                                    ...prev,
+                                                    lensBlur: {
+                                                        ...(prev.lensBlur || { enabled: false, x: 50, y: 50, blurRadius: 30, transitionSize: 20, innerRadius: 15, vignette: 10, shape: 'circular', angle: 0 }),
+                                                        innerRadius: 15
+                                                    }
+                                                }));
+                                            }}
+                                        />
+
+                                        <Slider
+                                            label="Transition Size"
+                                            min={5}
+                                            max={100}
+                                            value={imageState.lensBlur?.transitionSize || 0}
+                                            onChange={(val) => {
+                                                setImageState(prev => ({
+                                                    ...prev,
+                                                    lensBlur: {
+                                                        ...(prev.lensBlur || { enabled: false, x: 50, y: 50, blurRadius: 30, transitionSize: 20, innerRadius: 15, vignette: 10, shape: 'circular', angle: 0 }),
+                                                        transitionSize: val
+                                                    }
+                                                }));
+                                            }}
+                                            onReset={() => {
+                                                setImageState(prev => ({
+                                                    ...prev,
+                                                    lensBlur: {
+                                                        ...(prev.lensBlur || { enabled: false, x: 50, y: 50, blurRadius: 30, transitionSize: 20, innerRadius: 15, vignette: 10, shape: 'circular', angle: 0 }),
+                                                        transitionSize: 20
+                                                    }
+                                                }));
+                                            }}
+                                        />
+
+                                        {imageState.lensBlur?.shape === 'linear' && (
+                                            <Slider
+                                                label="Tilt Angle"
+                                                min={0}
+                                                max={360}
+                                                value={imageState.lensBlur?.angle || 0}
+                                                suffix="°"
+                                                onChange={(val) => {
+                                                    setImageState(prev => ({
+                                                        ...prev,
+                                                        lensBlur: {
+                                                            ...(prev.lensBlur || { enabled: false, x: 50, y: 50, blurRadius: 30, transitionSize: 20, innerRadius: 15, vignette: 10, shape: 'circular', angle: 0 }),
+                                                            angle: val
+                                                        }
+                                                    }));
+                                                }}
+                                                onReset={() => {
+                                                    setImageState(prev => ({
+                                                        ...prev,
+                                                        lensBlur: {
+                                                            ...(prev.lensBlur || { enabled: false, x: 50, y: 50, blurRadius: 30, transitionSize: 20, innerRadius: 15, vignette: 10, shape: 'circular', angle: 0 }),
+                                                            angle: 0
+                                                        }
+                                                    }));
+                                                }}
+                                            />
+                                        )}
+
+                                        <Slider
+                                            label="Lens Vignette"
+                                            min={0}
+                                            max={100}
+                                            value={imageState.lensBlur?.vignette || 0}
+                                            onChange={(val) => {
+                                                setImageState(prev => ({
+                                                    ...prev,
+                                                    lensBlur: {
+                                                        ...(prev.lensBlur || { enabled: false, x: 50, y: 50, blurRadius: 30, transitionSize: 20, innerRadius: 15, vignette: 10, shape: 'circular', angle: 0 }),
+                                                        vignette: val
+                                                    }
+                                                }));
+                                            }}
+                                            onReset={() => {
+                                                setImageState(prev => ({
+                                                    ...prev,
+                                                    lensBlur: {
+                                                        ...(prev.lensBlur || { enabled: false, x: 50, y: 50, blurRadius: 30, transitionSize: 20, innerRadius: 15, vignette: 10, shape: 'circular', angle: 0 }),
+                                                        vignette: 10
+                                                    }
+                                                }));
+                                            }}
+                                        />
+                                    </div>
+                                )}
+                            </div>
+                        </SidebarSection>
+
+                        {/* Grainy Film Styles */}
+                        <SidebarSection title="Grainy Film Style" defaultOpen={(imageState.grainyFilm?.strength || 0) > 0}>
+                            <div className="space-y-4">
+                                <div className="grid grid-cols-5 gap-1 bg-neutral-900 border border-neutral-800 p-1 rounded">
+                                    {[
+                                        { id: 'off', label: 'OFF' },
+                                        { id: 'X01', label: 'X01' },
+                                        { id: 'X02', label: 'X02' },
+                                        { id: 'L01', label: 'L01' },
+                                        { id: 'L02', label: 'L02' },
+                                        { id: 'F01', label: 'F01' },
+                                        { id: 'F02', label: 'F02' },
+                                        { id: 'K01', label: 'K01' },
+                                        { id: 'K02', label: 'K02' },
+                                    ].map(style => {
+                                        const isSel = (imageState.grainyFilm?.style || 'off') === style.id;
+                                        return (
+                                            <button
+                                                key={style.id}
+                                                onClick={() => {
+                                                    setImageState(prev => ({
+                                                        ...prev,
+                                                        grainyFilm: {
+                                                            ...(prev.grainyFilm || { strength: 0, grain: 0, style: 'off' }),
+                                                            style: style.id
+                                                        }
+                                                    }));
+                                                }}
+                                                className={`py-1 text-[8.5px] font-black rounded text-center transition-colors cursor-pointer ${
+                                                    isSel ? 'bg-sky-500 text-white font-extrabold' : 'text-neutral-400 hover:text-white bg-neutral-950/40'
+                                                }`}
+                                            >
+                                                {style.label}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+
+                                {imageState.grainyFilm?.style !== 'off' && (
+                                    <div className="space-y-3 mt-1.5">
+                                        <Slider
+                                            label="Style Strength"
+                                            min={0}
+                                            max={100}
+                                            suffix="%"
+                                            value={imageState.grainyFilm?.strength || 0}
+                                            onChange={(val) => {
+                                                setImageState(prev => ({
+                                                    ...prev,
+                                                    grainyFilm: {
+                                                        ...(prev.grainyFilm || { strength: 0, grain: 0, style: 'off' }),
+                                                        strength: val
+                                                    }
+                                                }));
+                                            }}
+                                            onReset={() => {
+                                                setImageState(prev => ({
+                                                    ...prev,
+                                                    grainyFilm: {
+                                                        ...(prev.grainyFilm || { strength: 0, grain: 0, style: 'off' }),
+                                                        strength: 0
+                                                    }
+                                                }));
+                                            }}
+                                        />
+                                        <Slider
+                                            label="Filmic Grain"
+                                            min={0}
+                                            max={100}
+                                            suffix="%"
+                                            value={imageState.grainyFilm?.grain || 0}
+                                            onChange={(val) => {
+                                                setImageState(prev => ({
+                                                    ...prev,
+                                                    grainyFilm: {
+                                                        ...(prev.grainyFilm || { strength: 0, grain: 0, style: 'off' }),
+                                                        grain: val
+                                                    }
+                                                }));
+                                            }}
+                                            onReset={() => {
+                                                setImageState(prev => ({
+                                                    ...prev,
+                                                    grainyFilm: {
+                                                        ...(prev.grainyFilm || { strength: 0, grain: 0, style: 'off' }),
+                                                        grain: 0
+                                                    }
+                                                }));
+                                            }}
+                                        />
+                                    </div>
+                                )}
+                            </div>
+                        </SidebarSection>
+
+                        <SidebarSection title="Global: Details & Effects">
+                            <Slider label="Structure" min={0} max={100} value={imageState.structure} onChange={(v) => updateState('structure', v)} onReset={() => updateState('structure', 0)} />
+                            <Slider label="Sharpening" min={0} max={100} value={imageState.sharpening} onChange={(v) => updateState('sharpening', v)} onReset={() => updateState('sharpening', 0)} />
+                            <Slider label="Dehaze" min={0} max={100} value={imageState.dehaze} onChange={(v) => updateState('dehaze', v)} onReset={() => updateState('dehaze', 0)} />
+                            <div className="h-px bg-neutral-900 my-2"></div>
+                            <Slider label="Grain" min={0} max={100} value={imageState.grain} onChange={(v) => updateState('grain', v)} onReset={() => updateState('grain', 0)} />
+                            <Slider label="Vignette" min={0} max={100} value={imageState.vignette} onChange={(v) => updateState('vignette', v)} onReset={() => updateState('vignette', 0)} />
+                        </SidebarSection>
+                    </>
+                )}
+
+                {activePanelTab === 'geometry' && (
+                    <>
+                        <SidebarSection title="Geometry Alignments" defaultOpen={true}>
+                            <div className="mb-6">
+                                <div className="flex items-center justify-between mb-3">
+                                    <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-400">Angle / Straighten</span>
+                                    <div className="flex gap-2">
+                                        <button 
+                                            onClick={() => {
+                                                setIsStraightenToolActive(!isStraightenToolActive);
+                                                setIsColorPickerActive(false);
+                                                setActiveMaskId(null);
+                                            }}
+                                            className={`p-1.5 rounded border transition-all cursor-pointer ${isStraightenToolActive ? 'bg-blue-600 border-blue-605 text-white' : 'border-neutral-700 text-neutral-400 hover:text-white'}`}
+                                            title="Straighten Tool (Draw Line)"
+                                        >
+                                            <div className="w-4 h-4">{Icons.Ruler}</div>
+                                        </button>
+                                    </div>
+                                </div>
+                                <Slider label="Angle" min={-45} max={45} value={imageState.straighten} onChange={(v) => updateState('straighten', v)} onReset={() => updateState('straighten', 0)} />
+                                
+                                <div className="mt-3 flex items-center">
+                                    <input 
+                                        type="checkbox" 
+                                        id="constrain-crop"
+                                        checked={imageState.constrain}
+                                        onChange={(e) => updateState('constrain', e.target.checked)}
+                                        className="w-3 h-3 rounded bg-neutral-800 border-neutral-600 checked:bg-white focus:ring-0 focus:ring-offset-0 cursor-pointer"
+                                    />
+                                    <label htmlFor="constrain-crop" className="ml-2 text-[10px] font-bold uppercase tracking-wider text-neutral-400 cursor-pointer select-none">
+                                        Constrain to Image (Auto Crop)
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-4 gap-2 mb-4">
                                 <button 
-                                    onClick={() => {
-                                        setIsStraightenToolActive(!isStraightenToolActive);
-                                        setIsColorPickerActive(false);
-                                        setActiveMaskId(null);
-                                    }}
-                                    className={`p-1.5 rounded border transition-all ${isStraightenToolActive ? 'bg-blue-600 border-blue-600 text-white' : 'border-neutral-700 text-neutral-400 hover:text-white'}`}
-                                    title="Straighten Tool (Draw Line)"
+                                    onClick={() => updateState('rotation', (imageState.rotation - 90 + 360) % 360)}
+                                    className="bg-neutral-900 hover:bg-neutral-800 text-neutral-300 hover:text-white py-3 rounded flex flex-col items-center justify-center gap-1.5 transition-colors border border-transparent cursor-pointer"
+                                    title="Rotate Left (90° CCW)"
                                 >
-                                    <div className="w-4 h-4">{Icons.Ruler}</div>
+                                     <RotateCcw className="w-4 h-4" />
+                                     <span className="text-[9px] uppercase tracking-wider font-semibold">CCW</span>
+                                </button>
+                                <button 
+                                    onClick={() => updateState('rotation', (imageState.rotation + 90) % 360)}
+                                    className="bg-neutral-900 hover:bg-neutral-800 text-neutral-300 hover:text-white py-3 rounded flex flex-col items-center justify-center gap-1.5 transition-colors border border-transparent cursor-pointer"
+                                    title="Rotate Right (90° CW)"
+                                >
+                                     <RotateCw className="w-4 h-4" />
+                                     <span className="text-[9px] uppercase tracking-wider font-semibold">CW</span>
+                                </button>
+                                <button 
+                                    onClick={() => updateState('flipH', !imageState.flipH)}
+                                    className={`py-3 rounded flex flex-col items-center justify-center gap-1.5 transition-all border cursor-pointer
+                                        ${imageState.flipH ? 'bg-blue-600 border-blue-500 text-white font-extrabold' : 'bg-neutral-900 text-neutral-400 hover:text-white border-transparent hover:bg-neutral-800'}
+                                    `}
+                                    title="Flip Horizontally (Left-Right Mirror)"
+                                >
+                                     <FlipHorizontal className="w-4 h-4" />
+                                     <span className="text-[9px] uppercase tracking-wider font-semibold">Flip H</span>
+                                </button>
+                                <button 
+                                    onClick={() => updateState('flipV', !imageState.flipV)}
+                                    className={`py-3 rounded flex flex-col items-center justify-center gap-1.5 transition-all border cursor-pointer
+                                        ${imageState.flipV ? 'bg-blue-600 border-blue-500 text-white font-extrabold' : 'bg-neutral-900 text-neutral-400 hover:text-white border-transparent hover:bg-neutral-800'}
+                                    `}
+                                    title="Flip Vertically (Up-Down Mirror)"
+                                >
+                                     <FlipVertical className="w-4 h-4" />
+                                     <span className="text-[9px] uppercase tracking-wider font-semibold">Flip V</span>
                                 </button>
                             </div>
-                        </div>
-                        <Slider label="Angle" min={-45} max={45} value={imageState.straighten} onChange={(v) => updateState('straighten', v)} onReset={() => updateState('straighten', 0)} />
-                        
-                        <div className="mt-3 flex items-center">
-                            <input 
-                                type="checkbox" 
-                                id="constrain-crop"
-                                checked={imageState.constrain}
-                                onChange={(e) => updateState('constrain', e.target.checked)}
-                                className="w-3 h-3 rounded bg-neutral-800 border-neutral-600 checked:bg-white focus:ring-0 focus:ring-offset-0"
-                            />
-                            <label htmlFor="constrain-crop" className="ml-2 text-[10px] font-bold uppercase tracking-wider text-neutral-400 cursor-pointer select-none">
-                                Constrain to Image (Auto Crop)
-                            </label>
-                        </div>
-                    </div>
+                        </SidebarSection>
 
-                    <div className="grid grid-cols-4 gap-2 mb-4">
-                        <button 
-                            onClick={() => updateState('rotation', (imageState.rotation - 90 + 360) % 360)}
-                            className="bg-neutral-900 hover:bg-neutral-800 text-neutral-300 hover:text-white py-3 rounded flex flex-col items-center justify-center gap-1.5 transition-colors border border-transparent"
-                            title="Rotate Left (90° CCW)"
-                        >
-                             <RotateCcw className="w-4 h-4" />
-                             <span className="text-[9px] uppercase tracking-wider font-semibold">CCW</span>
-                        </button>
-                        <button 
-                            onClick={() => updateState('rotation', (imageState.rotation + 90) % 360)}
-                            className="bg-neutral-900 hover:bg-neutral-800 text-neutral-300 hover:text-white py-3 rounded flex flex-col items-center justify-center gap-1.5 transition-colors border border-transparent"
-                            title="Rotate Right (90° CW)"
-                        >
-                             <RotateCw className="w-4 h-4" />
-                             <span className="text-[9px] uppercase tracking-wider font-semibold">CW</span>
-                        </button>
-                        <button 
-                            onClick={() => updateState('flipH', !imageState.flipH)}
-                            className={`py-3 rounded flex flex-col items-center justify-center gap-1.5 transition-all border
-                                ${imageState.flipH ? 'bg-blue-600 border-blue-500 text-white' : 'bg-neutral-900 text-neutral-400 hover:text-white border-transparent hover:bg-neutral-800'}
-                            `}
-                            title="Flip Horizontally (Left-Right Mirror)"
-                        >
-                             <FlipHorizontal className="w-4 h-4" />
-                             <span className="text-[9px] uppercase tracking-wider font-semibold">Flip H</span>
-                        </button>
-                        <button 
-                            onClick={() => updateState('flipV', !imageState.flipV)}
-                            className={`py-3 rounded flex flex-col items-center justify-center gap-1.5 transition-all border
-                                ${imageState.flipV ? 'bg-blue-600 border-blue-500 text-white' : 'bg-neutral-900 text-neutral-400 hover:text-white border-transparent hover:bg-neutral-800'}
-                            `}
-                            title="Flip Vertically (Up-Down Mirror)"
-                        >
-                             <FlipVertical className="w-4 h-4" />
-                             <span className="text-[9px] uppercase tracking-wider font-semibold">Flip V</span>
-                        </button>
-                    </div>
-                </SidebarSection>
+                        {/* Aspect Cropper Selection button */}
+                        <div className="p-5 border-t border-neutral-900/50 bg-neutral-950/20">
+                            <span className="text-[10px] font-extrabold text-neutral-400 uppercase tracking-widest block mb-2">Manual Crop Geometry</span>
+                            <button
+                                onClick={() => setIsCropMode(true)}
+                                className="w-full bg-sky-600 hover:bg-sky-500 text-white font-extrabold uppercase py-3 rounded-lg text-xs tracking-widest flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                            >
+                                <div className="w-4 h-4">{Icons.Crop}</div>
+                                <span>Adjust Crop Overlay</span>
+                            </button>
+                        </div>
+                    </>
+                )}
 
             </div>
         </aside>

@@ -205,6 +205,46 @@ const hslToRgb = (h: number, s: number, l: number) => {
 };
 
 /**
+ * Generates a 256-value Look-Up Table for Curves interpolation
+ */
+const getCurvesLUT = (points: { x: number; y: number }[]): Uint8Array => {
+  const lut = new Uint8Array(256);
+  const sorted = [...points].sort((a, b) => a.x - b.x);
+  
+  if (sorted.length === 0) {
+    for (let i = 0; i < 256; i++) lut[i] = i;
+    return lut;
+  }
+  
+  if (sorted[0].x > 0) {
+    sorted.unshift({ x: 0, y: sorted[0].y });
+  }
+  if (sorted[sorted.length - 1].x < 1) {
+    sorted.push({ x: 1, y: sorted[sorted.length - 1].y });
+  }
+
+  for (let i = 0; i < 256; i++) {
+    const t = i / 255;
+    let idx = 0;
+    for (let j = 0; j < sorted.length - 1; j++) {
+      if (t >= sorted[j].x && t <= sorted[j + 1].x) {
+        idx = j;
+        break;
+      }
+    }
+    const pA = sorted[idx];
+    const pB = sorted[idx + 1];
+    let val = pA.y;
+    if (pB.x > pA.x) {
+      const pct = (t - pA.x) / (pB.x - pA.x);
+      val = pA.y + pct * (pB.y - pA.y);
+    }
+    lut[i] = Math.max(0, Math.min(255, Math.round(val * 255)));
+  }
+  return lut;
+};
+
+/**
  * Core pixel processing logic for basic Light/Color/Structure adjustments.
  */
 const applySinglePixel = (
@@ -453,6 +493,54 @@ export const processImage = async (
   ctx.drawImage(sourceCanvas, -width / 2, -height / 2, width, height);
   ctx.restore();
 
+  // --- Healing Strokes (Patch / Spot removal) ---
+  if (state.healingStrokes && state.healingStrokes.length > 0) {
+    const strokeCanvas = document.createElement('canvas');
+    strokeCanvas.width = canvas.width;
+    strokeCanvas.height = canvas.height;
+    const sCtx = strokeCanvas.getContext('2d');
+    
+    if (sCtx) {
+      for (const stroke of state.healingStrokes) {
+        if (stroke.points.length === 0) continue;
+        
+        sCtx.clearRect(0, 0, strokeCanvas.width, strokeCanvas.height);
+        sCtx.lineCap = 'round';
+        sCtx.lineJoin = 'round';
+        sCtx.strokeStyle = 'white';
+        
+        const brushPx = Math.max(4, (stroke.size / 100) * canvas.width);
+        sCtx.lineWidth = brushPx;
+        sCtx.shadowBlur = brushPx * 0.45;
+        sCtx.shadowColor = 'white';
+        
+        sCtx.beginPath();
+        const p0 = stroke.points[0];
+        sCtx.moveTo((p0.x / 100) * canvas.width, (p0.y / 100) * canvas.height);
+        for (let pIdx = 1; pIdx < stroke.points.length; pIdx++) {
+          const pt = stroke.points[pIdx];
+          sCtx.lineTo((pt.x / 100) * canvas.width, (pt.y / 100) * canvas.height);
+        }
+        sCtx.stroke();
+        
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = canvas.width;
+        tempCanvas.height = canvas.height;
+        const tCtx = tempCanvas.getContext('2d');
+        if (tCtx) {
+          const offsetDist = Math.max(12, brushPx * 1.5);
+          tCtx.drawImage(canvas, -offsetDist, -offsetDist * 0.5);
+          tCtx.globalCompositeOperation = 'destination-in';
+          tCtx.drawImage(strokeCanvas, 0, 0);
+          
+          ctx.save();
+          ctx.drawImage(tempCanvas, 0, 0);
+          ctx.restore();
+        }
+      }
+    }
+  }
+
   const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
   const data = imageData.data;
   const len = data.length;
@@ -516,6 +604,60 @@ export const processImage = async (
       hue: CHANNEL_HUES[key],
       adj: state.colorGrade[key]
   })).sort((a, b) => a.hue - b.hue);
+
+  // --- Curves LUTs computation ---
+  const curveLUTs = {
+    rgb: getCurvesLUT(state.curves?.rgb || [{ x: 0, y: 0 }, { x: 1, y: 1 }]),
+    r: getCurvesLUT(state.curves?.r || [{ x: 0, y: 0 }, { x: 1, y: 1 }]),
+    g: getCurvesLUT(state.curves?.g || [{ x: 0, y: 0 }, { x: 1, y: 1 }]),
+    b: getCurvesLUT(state.curves?.b || [{ x: 0, y: 0 }, { x: 1, y: 1 }])
+  };
+
+  // --- Selective Points pre-calculations ---
+  const selectivePointsData = (state.selectivePoints || []).map(pt => {
+    const cx = clamp(Math.round((pt.x / 100) * canvas.width), 0, canvas.width - 1);
+    const cy = clamp(Math.round((pt.y / 100) * canvas.height), 0, canvas.height - 1);
+    const pxRadius = (pt.radius / 100) * Math.max(canvas.width, canvas.height);
+    
+    // Sample color at center point
+    const idx = (cy * canvas.width + cx) * 4;
+    const tr = data[idx] !== undefined ? data[idx] : 128;
+    const tg = data[idx+1] !== undefined ? data[idx+1] : 128;
+    const tb = data[idx+2] !== undefined ? data[idx+2] : 128;
+
+    return {
+      pt,
+      cx,
+      cy,
+      pxRadius,
+      tr, tg, tb
+    };
+  });
+
+  // --- Lens Blur precomputations ---
+  const lbEnabled = state.lensBlur?.enabled && (state.lensBlur?.blurRadius || 0) > 0;
+  let blurData: Uint8ClampedArray | null = null;
+  if (lbEnabled) {
+    const blurCanvas = document.createElement('canvas');
+    blurCanvas.width = canvas.width;
+    blurCanvas.height = canvas.height;
+    const bCtx = blurCanvas.getContext('2d');
+    if (bCtx) {
+      bCtx.filter = `blur(${state.lensBlur.blurRadius * 0.22}px)`; // map 0-100 to 0-22px max blur
+      bCtx.drawImage(canvas, 0, 0);
+      blurData = bCtx.getImageData(0, 0, canvas.width, canvas.height).data;
+    }
+  }
+
+  // --- HDR Scape & Grainy Film constants ---
+  const hdrStrength = state.hdrScape?.strength || 0;
+  const hdrBrightness = state.hdrScape?.brightness || 0;
+  const hdrSaturation = state.hdrScape?.saturation || 0;
+  const hdrStyle = state.hdrScape?.style || 'Nature';
+
+  const gfStrength = state.grainyFilm?.strength || 0;
+  const gfGrain = state.grainyFilm?.grain || 0;
+  const gfStyle = state.grainyFilm?.style || 'off';
 
   // --- Pixel Loop ---
   for (let i = 0; i < len; i += 4) {
@@ -687,6 +829,184 @@ export const processImage = async (
         }
     }
 
+    // B.1 SELECTIVE CONTROL POINTS ADJUSTMENTS
+    if (selectivePointsData.length > 0) {
+      const px = (i / 4) % canvas.width;
+      const py = Math.floor((i / 4) / canvas.width);
+      
+      for (const ptData of selectivePointsData) {
+        const dx = px - ptData.cx;
+        const dy = py - ptData.cy;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        
+        if (dist < ptData.pxRadius) {
+          let spatialBlend = 1 - dist / ptData.pxRadius;
+          spatialBlend = spatialBlend * spatialBlend * (3 - 2 * spatialBlend); // smooth step falloff
+          
+          // Color similarity weight
+          const colorDiff = Math.sqrt((r - ptData.tr)**2 + (g - ptData.tg)**2 + (b - ptData.tb)**2) / 441.67;
+          const colorWeight = Math.max(0, 1 - colorDiff * 2.8);
+          
+          const blend = spatialBlend * colorWeight;
+          if (blend > 0) {
+            let [lr, lg, lb] = applySinglePixel(r, g, b, {
+              brightness: ptData.pt.brightness,
+              contrast: ptData.pt.contrast,
+              saturation: ptData.pt.saturation,
+              structure: ptData.pt.structure,
+              ambiance: 0, warmth: 0, tint: 0
+            });
+            r = r * (1 - blend) + lr * blend;
+            g = g * (1 - blend) + lg * blend;
+            b = b * (1 - blend) + lb * blend;
+          }
+        }
+      }
+    }
+
+    // B.2 HDR SCAPE EFFECT
+    if (hdrStrength > 0) {
+       const hdrBoost = hdrStrength / 100;
+       const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+       
+       // 1. Shadow boost
+       if (lum < 130) {
+          const shadowMask = (130 - lum) / 130;
+          const lift = (130 - lum) * 0.45 * hdrBoost * shadowMask;
+          r += lift; g += lift; b += lift;
+       }
+       
+       // 2. Highlight recovery
+       if (lum > 170) {
+          const highlightMask = (lum - 170) / (255 - 170);
+          const compress = (lum - 170) * 0.4 * hdrBoost * highlightMask;
+          r -= compress; g -= compress; b -= compress;
+       }
+
+       // 3. Local detail/structure booster
+       let detailScale = 1.0 + hdrBoost * 0.22;
+       if (hdrStyle === 'Fine') detailScale = 1.0 + hdrBoost * 0.38;
+       if (hdrStyle === 'Strong') detailScale = 1.0 + hdrBoost * 0.48;
+       if (hdrStyle === 'People') detailScale = 1.0 + hdrBoost * 0.10;
+       
+       r = 128 + (r - 128) * detailScale;
+       g = 128 + (g - 128) * detailScale;
+       b = 128 + (b - 128) * detailScale;
+       
+       // 4. Custom HDR saturation & brightness controls
+       let satFactor = 1.0 + hdrBoost * 0.24 + (hdrSaturation / 100) * 0.55;
+       if (hdrStyle === 'People') satFactor = 1.0 + (hdrSaturation / 100) * 0.35;
+       
+       const finalLum = 0.299 * r + 0.587 * g + 0.114 * b;
+       const brightLift = hdrBrightness * 0.65;
+       r = finalLum + (r - finalLum) * satFactor + brightLift;
+       g = finalLum + (g - finalLum) * satFactor + brightLift;
+       b = finalLum + (b - finalLum) * satFactor + brightLift;
+    }
+
+    // B.3 CURVES TONAL MAPPING
+    r = curveLUTs.r[clamp(Math.round(r), 0, 255)];
+    g = curveLUTs.g[clamp(Math.round(g), 0, 255)];
+    b = curveLUTs.b[clamp(Math.round(b), 0, 255)];
+
+    r = curveLUTs.rgb[clamp(Math.round(r), 0, 255)];
+    g = curveLUTs.rgb[clamp(Math.round(g), 0, 255)];
+    b = curveLUTs.rgb[clamp(Math.round(b), 0, 255)];
+
+    // B.4 GRAINY FILM STYLES
+    if (gfStyle !== 'off' && gfStrength > 0) {
+       const factor = gfStrength / 100;
+       let targetR = r;
+       let targetG = g;
+       let targetB = b;
+       
+       if (gfStyle === 'X01') {
+          targetR = r * 0.94;
+          targetG = g * 1.01;
+          targetB = b * 1.09;
+          targetR = 128 + (targetR - 128) * 1.15;
+          targetG = 128 + (targetG - 128) * 1.15;
+          targetB = 128 + (targetB - 128) * 1.15;
+       } else if (gfStyle === 'X02') {
+          targetR = r * 1.09;
+          targetG = g * 1.05;
+          targetB = b * 0.88;
+       } else if (gfStyle === 'L01') {
+          targetR = r * 0.88 + 22;
+          targetG = g * 0.88 + 22;
+          targetB = b * 0.94 + 18;
+          targetR = 128 + (targetR - 128) * 0.82;
+          targetG = 128 + (targetG - 128) * 0.82;
+          targetB = 128 + (targetB - 128) * 0.82;
+       } else if (gfStyle === 'L02') {
+          const sepiaR = r * 0.393 + g * 0.769 + b * 0.189;
+          const sepiaG = r * 0.349 + g * 0.686 + b * 0.168;
+          const sepiaB = r * 0.272 + g * 0.534 + b * 0.131;
+          targetR = sepiaR; targetG = sepiaG; targetB = sepiaB;
+       } else if (gfStyle === 'F01') {
+          const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+          targetR = lum + (r - lum) * 1.35;
+          targetG = lum + (g - lum) * 1.45;
+          targetB = lum + (b - lum) * 1.15;
+       } else if (gfStyle === 'F02') {
+          targetR = r * 1.03;
+          targetG = g * 0.97;
+          targetB = b * 1.07;
+       } else if (gfStyle === 'K01') {
+          const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+          targetR = targetG = targetB = clamp(lum * 0.9 + 12, 0, 255);
+       } else if (gfStyle === 'K02') {
+          const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+          targetR = targetG = targetB = clamp(128 + (lum - 128) * 1.45, 0, 255);
+       }
+       
+       r = r * (1 - factor) + targetR * factor;
+       g = g * (1 - factor) + targetG * factor;
+       b = b * (1 - factor) + targetB * factor;
+    }
+
+    // B.5 LENS BLUR EFFECT
+    if (lbEnabled && blurData) {
+       const cx = (state.lensBlur.x / 100) * canvas.width;
+       const cy = (state.lensBlur.y / 100) * canvas.height;
+       const px = (i / 4) % canvas.width;
+       const py = Math.floor((i / 4) / canvas.width);
+       
+       const innerPx = (state.lensBlur.innerRadius / 100) * Math.max(canvas.width, canvas.height);
+       const outerPx = innerPx + (state.lensBlur.transitionSize / 100) * Math.max(canvas.width, canvas.height);
+       let dist = 0;
+       
+       if (state.lensBlur.shape === 'linear') {
+          const theta = (state.lensBlur.angle * Math.PI) / 180;
+          dist = Math.abs((px - cx) * Math.cos(theta) + (py - cy) * Math.sin(theta));
+       } else {
+          dist = Math.sqrt((px - cx)**2 + (py - cy)**2);
+       }
+       
+       let f = 0;
+       if (dist >= outerPx) {
+          f = 1;
+       } else if (dist > innerPx) {
+          f = (dist - innerPx) / (outerPx - innerPx);
+          f = f * f * (3 - 2 * f); // smoothstep
+       }
+       
+       r = r * (1 - f) + blurData[i] * f;
+       g = g * (1 - f) + blurData[i + 1] * f;
+       b = b * (1 - f) + blurData[i + 2] * f;
+       
+       // Lens Blur vignette
+       if (state.lensBlur.vignette > 0) {
+          const maxDist = Math.sqrt(cx*cx + cy*cy) || 1200;
+          const ptDist = Math.sqrt((px - cx)**2 + (py - cy)**2);
+          const vigPct = ptDist / maxDist;
+          const vigBlend = Math.min(1, vigPct * (state.lensBlur.vignette / 100));
+          r *= (1 - vigBlend * 0.42);
+          g *= (1 - vigBlend * 0.42);
+          b *= (1 - vigBlend * 0.42);
+       }
+    }
+
     // C. EFFECTS (Dehaze, Color Grade, Grain) - usually applied last
     
     // 5. Dehaze
@@ -703,9 +1023,13 @@ export const processImage = async (
         [r, g, b] = applyColorGrading(r, g, b, globalChannelDefs);
     }
 
-    // 7. Grain
-    if (grainAmount > 0) {
-        const noise = (Math.random() - 0.5) * grainAmount;
+    // 7. General & Film Grain
+    let finalGrain = grainAmount;
+    if (gfGrain > 0) {
+       finalGrain += (gfGrain * 0.35);
+    }
+    if (finalGrain > 0) {
+        const noise = (Math.random() - 0.5) * finalGrain;
         r += noise;
         g += noise;
         b += noise;
