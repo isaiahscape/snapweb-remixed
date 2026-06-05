@@ -19,6 +19,7 @@ Load raw digital negative files such as `.dng`, `.cr2`, `.nef`, and `.arw` forma
 
 ### 2. Precise Global & Selective Adjustments
 *   **Film Simulations & Classic Looks Grouping**: Presets are divided into two clear segments—**Film Simulations** (featuring high-fidelity simulations like Portra LKP1, Moody Bronze LKP2, Fuji Superia LFP1, and Fuji Street LFS1) and **Classic Looks** for vintage/creative grades.
+*   **Advanced Tonal Contrast**: Multi-band contrast adjustments mapped independently to **High Tones**, **Mid Tones**, and **Low Tones**, coupled with dedicated **Shadow Protection** and **Highlight Protection** sliders to mathematically prevent clipping.
 *   **Global Filters**: Master control over Exposure, Contrast, Highlights, Shadows, Saturation, Warmth, Tint, Ambiance, Structure, Sharpening, Dehaze, Grain, and Vignette.
 *   **Selective Vector Masks (Local Adjustments)**: Draw high-performance local adjustments utilizing adjustable brush sizes and edge-softening (feather) controls. Layer masks with independent exposure, brightness, and contrast curves.
 *   **Interactive Cropping & Straightening**: Crop dimensions dynamically or straighten horizons with a granular $\pm45^{\circ}$ adjustment tool.

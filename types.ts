@@ -123,6 +123,12 @@ export interface ImageState {
   dehaze: number; // 0 to 100 (Atmospheric removal)
   grain: number; // 0 to 100
   vignette: number; // 0 to 100
+  tonalContrast: number; // Keep for backward-compatibility or legacy presets
+  tonalHighTones: number; // -100 to 100
+  tonalMidTones: number; // -100 to 100
+  tonalLowTones: number; // -100 to 100
+  tonalProtectShadows: number; // 0 to 100 (Shadow protection)
+  tonalProtectHighlights: number; // 0 to 100 (Highlight protection)
   
   // Color Mixer (HSL)
   colorGrade: ColorGradeState;
@@ -173,6 +179,12 @@ export const DEFAULT_IMAGE_STATE: ImageState = {
   dehaze: 0,
   grain: 0,
   vignette: 0,
+  tonalContrast: 0,
+  tonalHighTones: 0,
+  tonalMidTones: 0,
+  tonalLowTones: 0,
+  tonalProtectShadows: 0,
+  tonalProtectHighlights: 0,
   colorGrade: DEFAULT_COLOR_GRADE,
   rotation: 0,
   straighten: 0,

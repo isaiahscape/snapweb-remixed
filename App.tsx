@@ -843,6 +843,12 @@ const App: React.FC = () => {
       shadows: DEFAULT_IMAGE_STATE.shadows,
       
       structure: DEFAULT_IMAGE_STATE.structure,
+      tonalContrast: DEFAULT_IMAGE_STATE.tonalContrast,
+      tonalHighTones: DEFAULT_IMAGE_STATE.tonalHighTones,
+      tonalMidTones: DEFAULT_IMAGE_STATE.tonalMidTones,
+      tonalLowTones: DEFAULT_IMAGE_STATE.tonalLowTones,
+      tonalProtectShadows: DEFAULT_IMAGE_STATE.tonalProtectShadows,
+      tonalProtectHighlights: DEFAULT_IMAGE_STATE.tonalProtectHighlights,
       sharpening: DEFAULT_IMAGE_STATE.sharpening,
       dehaze: DEFAULT_IMAGE_STATE.dehaze,
       grain: DEFAULT_IMAGE_STATE.grain,
@@ -1645,9 +1651,12 @@ const App: React.FC = () => {
         )}
 
         {/* Footprint credit footer */}
-        <footer className="py-6 border-t border-neutral-900 flex flex-col items-center justify-center text-center gap-2 px-8 text-[11px] text-neutral-400 font-sans shrink-0 select-text bg-black/40">
+        <footer className="py-6 border-t border-neutral-900 flex flex-col items-center justify-center text-center gap-3 px-8 text-[11px] text-neutral-400 font-sans shrink-0 select-text bg-black/40">
           <p className="leading-relaxed">
             Recreated by <a href="https://isaiahthings.me" target="_blank" rel="noopener noreferrer" className="text-neutral-200 hover:text-blue-400 font-medium transition-colors underline decoration-neutral-800 hover:decoration-blue-400">Leonardo (@isaiahscape)</a>, generated initially with Google AI Studio by <a href="https://www.reddit.com/user/BetterAtPS" target="_blank" rel="noopener noreferrer" className="text-neutral-200 hover:text-blue-400 font-medium transition-colors underline decoration-neutral-800 hover:decoration-blue-400">u/BetterAtPS</a> on Reddit.
+          </p>
+          <p className="leading-relaxed">
+            Snapseed for Web is not affiliated by Google, this project is a reverse-engineered web version of Snapseed.
           </p>
           <p className="text-[10px] text-neutral-500 leading-relaxed">
             Source is at <a href="https://github.com/isaiahscape/snapweb-remixed" target="_blank" rel="noopener noreferrer" className="text-neutral-200 hover:text-blue-400 font-medium transition-colors underline decoration-neutral-800 hover:decoration-blue-400">isaiahscape/snapweb-remixed</a>
@@ -2047,6 +2056,12 @@ const App: React.FC = () => {
                                         highlights: DEFAULT_IMAGE_STATE.highlights,
                                         shadows: DEFAULT_IMAGE_STATE.shadows,
                                         structure: DEFAULT_IMAGE_STATE.structure,
+                                        tonalContrast: DEFAULT_IMAGE_STATE.tonalContrast,
+                                        tonalHighTones: DEFAULT_IMAGE_STATE.tonalHighTones,
+                                        tonalMidTones: DEFAULT_IMAGE_STATE.tonalMidTones,
+                                        tonalLowTones: DEFAULT_IMAGE_STATE.tonalLowTones,
+                                        tonalProtectShadows: DEFAULT_IMAGE_STATE.tonalProtectShadows,
+                                        tonalProtectHighlights: DEFAULT_IMAGE_STATE.tonalProtectHighlights,
                                         sharpening: DEFAULT_IMAGE_STATE.sharpening,
                                         dehaze: DEFAULT_IMAGE_STATE.dehaze,
                                         grain: DEFAULT_IMAGE_STATE.grain,
@@ -3104,6 +3119,15 @@ const App: React.FC = () => {
                                     </div>
                                 )}
                             </div>
+                        </SidebarSection>
+
+                        <SidebarSection title="Global: Tonal Contrast (Advanced)">
+                            <Slider label="High Tones" min={-100} max={100} value={imageState.tonalHighTones} onChange={(v) => updateState('tonalHighTones', v)} onReset={() => updateState('tonalHighTones', 0)} />
+                            <Slider label="Mid Tones" min={-100} max={100} value={imageState.tonalMidTones} onChange={(v) => updateState('tonalMidTones', v)} onReset={() => updateState('tonalMidTones', 0)} />
+                            <Slider label="Low Tones" min={-100} max={100} value={imageState.tonalLowTones} onChange={(v) => updateState('tonalLowTones', v)} onReset={() => updateState('tonalLowTones', 0)} />
+                            <div className="h-px bg-neutral-900 my-2"></div>
+                            <Slider label="Protect Shadows" min={0} max={100} value={imageState.tonalProtectShadows} onChange={(v) => updateState('tonalProtectShadows', v)} onReset={() => updateState('tonalProtectShadows', 0)} />
+                            <Slider label="Protect Highlights" min={0} max={100} value={imageState.tonalProtectHighlights} onChange={(v) => updateState('tonalProtectHighlights', v)} onReset={() => updateState('tonalProtectHighlights', 0)} />
                         </SidebarSection>
 
                         <SidebarSection title="Global: Details & Effects">

@@ -259,6 +259,12 @@ const applySinglePixel = (
         highlights?: number;
         shadows?: number;
         structure?: number;
+        tonalContrast?: number;
+        tonalHighTones?: number;
+        tonalMidTones?: number;
+        tonalLowTones?: number;
+        tonalProtectShadows?: number;
+        tonalProtectHighlights?: number;
     }
 ) : [number, number, number] => {
     
@@ -312,6 +318,94 @@ const applySinglePixel = (
         r = 128 + (r - 128) * factor;
         g = 128 + (g - 128) * factor;
         b = 128 + (b - 128) * factor;
+    }
+
+    // 5.5. Legacy Tonal Contrast (Multi-band mid, high, low local contrast)
+    if (params.tonalContrast && params.tonalContrast !== 0) {
+        const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+        const tcFactor = params.tonalContrast / 100;
+        
+        // Multi-band weight distributions
+        const lowWeight = Math.max(0, 1 - Math.abs(lum - 64) / 96);
+        const midWeight = Math.max(0, 1 - Math.abs(lum - 128) / 96);
+        const highWeight = Math.max(0, 1 - Math.abs(lum - 192) / 96);
+        
+        if (lowWeight > 0) {
+            const f = 1 + tcFactor * 0.40 * lowWeight;
+            r = 64 + (r - 64) * f;
+            g = 64 + (g - 64) * f;
+            b = 64 + (b - 64) * f;
+        }
+        if (midWeight > 0) {
+            const f = 1 + tcFactor * 0.50 * midWeight;
+            r = 128 + (r - 128) * f;
+            g = 128 + (g - 128) * f;
+            b = 128 + (b - 128) * f;
+        }
+        if (highWeight > 0) {
+            const f = 1 + tcFactor * 0.30 * highWeight;
+            r = 192 + (r - 192) * f;
+            g = 192 + (g - 192) * f;
+            b = 192 + (b - 192) * f;
+        }
+    }
+
+    // 5.6. Advanced Modern Tonal Contrast (Separate High/Mid/Low with Shadow/Highlight Protection)
+    const hasAdvancedTonal = (
+        (params.tonalLowTones && params.tonalLowTones !== 0) ||
+        (params.tonalMidTones && params.tonalMidTones !== 0) ||
+        (params.tonalHighTones && params.tonalHighTones !== 0)
+    );
+
+    if (hasAdvancedTonal) {
+        const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+        
+        // Shadow Protection (dampens adjustment as pixels get darker than 96)
+        let shadowDamp = 1.0;
+        if (params.tonalProtectShadows && params.tonalProtectShadows > 0) {
+            const shadowProximity = Math.max(0, (96 - lum) / 96); // 1.0 at pure black (0), 0.0 at 96+
+            shadowDamp = 1.0 - (params.tonalProtectShadows / 100) * shadowProximity;
+        }
+
+        // Highlight Protection (dampens adjustment as pixels get brighter than 160)
+        let highlightDamp = 1.0;
+        if (params.tonalProtectHighlights && params.tonalProtectHighlights > 0) {
+            const highlightProximity = Math.max(0, (lum - 160) / 95); // 1.0 at pure white (255), 0.0 at 160-
+            highlightDamp = 1.0 - (params.tonalProtectHighlights / 100) * highlightProximity;
+        }
+
+        // Low Tones Contrast
+        if (params.tonalLowTones && params.tonalLowTones !== 0) {
+            const lowWeight = Math.max(0, 1 - Math.abs(lum - 64) / 96);
+            if (lowWeight > 0) {
+                const factor = 1 + (params.tonalLowTones / 100) * 0.45 * lowWeight * shadowDamp;
+                r = 64 + (r - 64) * factor;
+                g = 64 + (g - 64) * factor;
+                b = 64 + (b - 64) * factor;
+            }
+        }
+
+        // Mid Tones Contrast
+        if (params.tonalMidTones && params.tonalMidTones !== 0) {
+            const midWeight = Math.max(0, 1 - Math.abs(lum - 128) / 96);
+            if (midWeight > 0) {
+                const factor = 1 + (params.tonalMidTones / 100) * 0.55 * midWeight;
+                r = 128 + (r - 128) * factor;
+                g = 128 + (g - 128) * factor;
+                b = 128 + (b - 128) * factor;
+            }
+        }
+
+        // High Tones Contrast
+        if (params.tonalHighTones && params.tonalHighTones !== 0) {
+            const highWeight = Math.max(0, 1 - Math.abs(lum - 192) / 96);
+            if (highWeight > 0) {
+                const factor = 1 + (params.tonalHighTones / 100) * 0.35 * highWeight * highlightDamp;
+                r = 192 + (r - 192) * factor;
+                g = 192 + (g - 192) * factor;
+                b = 192 + (b - 192) * factor;
+            }
+        }
     }
 
     // 6. Saturation
@@ -791,7 +885,13 @@ export const processImage = async (
         tint: state.tint,
         highlights: state.highlights,
         shadows: state.shadows,
-        structure: state.structure
+        structure: state.structure,
+        tonalContrast: state.tonalContrast,
+        tonalHighTones: state.tonalHighTones,
+        tonalMidTones: state.tonalMidTones,
+        tonalLowTones: state.tonalLowTones,
+        tonalProtectShadows: state.tonalProtectShadows,
+        tonalProtectHighlights: state.tonalProtectHighlights
     });
 
     // B. LOCAL MASK ADJUSTMENTS
