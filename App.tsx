@@ -15,7 +15,7 @@ const Icons = {
   Upload: <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="square" strokeLinejoin="miter" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>,
   Download: <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="square" strokeLinejoin="miter" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>,
   Undo: <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="square" strokeLinejoin="miter" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" /></svg>,
-  Compare: <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="square" strokeLinejoin="miter" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>,
+  Compare: <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><rect x="3" y="3" width="18" height="18" rx="2" strokeLinecap="round" strokeLinejoin="round" /><path strokeLinecap="round" strokeLinejoin="round" d="M12 3v18M9 12l-3 3 3 3M15 12l3 3-3 3" /></svg>,
   ChevronDown: <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="square" strokeLinejoin="miter" d="M19 9l-7 7-7-7" /></svg>,
   Rotate: <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="square" strokeLinejoin="miter" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>,
   Flip: <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="square" strokeLinejoin="miter" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>,
@@ -65,6 +65,9 @@ const App: React.FC = () => {
   const [exportQuality, setExportQuality] = useState<number>(0.95);
 
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
+
+  // Floating Exposure Histogram visibility state (defaults to false for clean preview focus)
+  const [showHistogram, setShowHistogram] = useState<boolean>(false);
 
   // Workspace configuration (sidebar position left/right, show/hide UI for review)
   const [sidebarPosition, setSidebarPosition] = useState<'left' | 'right'>(() => {
@@ -168,6 +171,13 @@ const App: React.FC = () => {
         e.preventDefault();
         setHideUI(false);
         showToast("Interface restored.", "success");
+      } else if (e.key?.toLowerCase() === 'h') {
+        e.preventDefault();
+        setShowHistogram(prev => {
+          const next = !prev;
+          showToast(next ? "Histogram overlay active." : "Histogram hidden.", "success");
+          return next;
+        });
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -1772,6 +1782,23 @@ const App: React.FC = () => {
                     title="Hide Interface / Review Photo (Tab)"
                     className="hover:bg-neutral-900 p-1.5 sm:p-2 hover:text-cyan-400 transition-colors"
                   />
+                 <IconButton 
+                    id="btn-header-histogram-toggle"
+                    icon={
+                      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2} className={`w-5 h-5 ${showHistogram ? 'text-cyan-400' : ''}`}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                      </svg>
+                    } 
+                    onClick={() => {
+                        setShowHistogram(prev => {
+                          const next = !prev;
+                          showToast(next ? "Histogram overlay active." : "Histogram hidden.", "success");
+                          return next;
+                        });
+                    }} 
+                    title="Toggle Live Histogram (H)"
+                    className={`p-1.5 sm:p-2 transition-colors hover:bg-neutral-900 ${showHistogram ? 'text-cyan-400 hover:text-cyan-350' : 'text-neutral-400 hover:text-white'}`}
+                  />
                </>
              )}
              <button 
@@ -1952,6 +1979,53 @@ const App: React.FC = () => {
                   <Maximize2 className="w-3 h-3" />
                   <span>Fit</span>
                 </button>
+
+                {/* Vertical Divider */}
+                <span className="w-[1px] h-4 bg-neutral-800 mx-1" />
+
+                {/* Histogram Toggle Button */}
+                <button
+                  id="btn-zoom-histogram-toggle"
+                  onClick={() => {
+                    setShowHistogram(prev => !prev);
+                    showToast(showHistogram ? "Histogram hidden." : "Histogram overlay active.", "success");
+                  }}
+                  className={`p-1.5 px-2 rounded hover:bg-neutral-700 active:bg-neutral-600 transition cursor-pointer flex items-center gap-1 text-[9px] font-bold tracking-wider uppercase border border-neutral-700/30
+                    ${showHistogram ? 'bg-cyan-950/60 text-cyan-400 border-cyan-800/80 font-black' : 'bg-neutral-800 text-neutral-200 font-bold'}
+                  `}
+                  title="Toggle Live Histogram (H)"
+                >
+                  <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.4} className="w-3.5 h-3.5"><path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+                  <span>Hist</span>
+                </button>
+              </div>
+            )}
+
+            {/* Premium Floating Overlay Histogram at bottom left of image workspace */}
+            {sourceImage && showHistogram && (
+              <div 
+                id="floating-histogram" 
+                className="absolute bottom-6 left-6 z-30 p-2.5 rounded-xl bg-neutral-950/90 backdrop-blur-md border border-neutral-800/90 shadow-[0_8px_32px_rgba(0,0,0,0.8)] w-56 sm:w-64 max-w-[calc(100%-3rem)] animate-slideDown select-none"
+              >
+                 <div className="flex justify-between items-center mb-2 pb-1.5 border-b border-neutral-900 text-[9px] font-black text-neutral-400 uppercase tracking-widest leading-none">
+                     <span className="flex items-center gap-1.5">
+                       <span className="w-1.5 h-1.5 bg-cyan-450 rounded-full animate-pulse"></span>
+                       Exposure Histogram
+                     </span>
+                     <button 
+                       onClick={() => {
+                         setShowHistogram(false);
+                         showToast("Histogram hidden.", "success");
+                       }} 
+                       className="text-neutral-500 hover:text-white transition-colors p-0.5 rounded hover:bg-neutral-800 cursor-pointer"
+                       title="Hide Histogram"
+                     >
+                       <X className="w-3.5 h-3.5" />
+                     </button>
+                 </div>
+                 <div className="h-16 sm:h-20 md:h-24">
+                     <Histogram imageData={previewData} />
+                 </div>
               </div>
             )}
         </main>
@@ -1990,10 +2064,7 @@ const App: React.FC = () => {
             </div>
           )}
             
-            {/* Histogram */}
-            <div className="p-4 border-b border-neutral-900 bg-black/50">
-                <Histogram imageData={previewData} />
-            </div>
+
 
             {/* Tools */}
             {/* Elegant Snapseed horizontal control switch tab */}
