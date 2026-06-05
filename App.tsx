@@ -938,7 +938,7 @@ const App: React.FC = () => {
     const stateToUse = forceOriginal ? DEFAULT_IMAGE_STATE : imageState;
 
     try {
-        const imageData = await processImage(sourceImage, stateToUse, 'preview', zoom);
+        const imageData = await processImage(sourceImage, stateToUse, 'preview');
         
         const canvas = canvasRef.current;
         const ctx = canvas.getContext('2d');
@@ -954,7 +954,7 @@ const App: React.FC = () => {
     } catch (e) {
         console.error("Processing error:", e);
     }
-  }, [sourceImage, imageState, zoom]);
+  }, [sourceImage, imageState]);
 
   // Trigger update on state change
   useEffect(() => {
@@ -965,7 +965,7 @@ const App: React.FC = () => {
         });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [imageState, sourceImage, isComparing, isCropMode, zoom, updatePreview]);
+  }, [imageState, sourceImage, isComparing, isCropMode, updatePreview]);
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

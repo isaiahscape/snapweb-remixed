@@ -519,8 +519,7 @@ const applyColorGrading = (
 export const processImage = async (
   sourceImage: HTMLImageElement,
   state: ImageState,
-  quality: 'preview' | 'full' = 'preview',
-  zoom: number = 1
+  quality: 'preview' | 'full' = 'preview'
 ): Promise<ImageData> => {
   
   // 0. Prepare Source (Handle Cropping first)
@@ -555,8 +554,7 @@ export const processImage = async (
   let height = srcHeight;
 
   if (quality === 'preview') {
-    const baseMaxDim = 1200;
-    const maxDim = Math.min(Math.max(srcWidth, srcHeight), Math.ceil(baseMaxDim * zoom));
+    const maxDim = 1800;
     if (width > maxDim || height > maxDim) {
       const ratio = Math.min(maxDim / width, maxDim / height);
       width = Math.floor(width * ratio);
