@@ -527,7 +527,7 @@ export const processImage = async (
   let srcWidth = sourceImage.naturalWidth;
   let srcHeight = sourceImage.naturalHeight;
 
-  if (state.crop) {
+  if (state.crop && state.crop.width > 2 && state.crop.height > 2) {
       const cropCanvas = document.createElement('canvas');
       cropCanvas.width = state.crop.width;
       cropCanvas.height = state.crop.height;

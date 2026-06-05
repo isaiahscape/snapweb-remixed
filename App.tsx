@@ -3220,13 +3220,25 @@ const App: React.FC = () => {
                         {/* Aspect Cropper Selection button */}
                         <div className="p-5 border-t border-neutral-900/50 bg-neutral-950/20">
                             <span className="text-[10px] font-extrabold text-neutral-400 uppercase tracking-widest block mb-2">Manual Crop Geometry</span>
-                            <button
-                                onClick={() => setIsCropMode(true)}
-                                className="w-full bg-sky-600 hover:bg-sky-500 text-white font-extrabold uppercase py-3 rounded-lg text-xs tracking-widest flex items-center justify-center gap-2 transition-colors cursor-pointer"
-                            >
-                                <div className="w-4 h-4">{Icons.Crop}</div>
-                                <span>Adjust Crop Overlay</span>
-                            </button>
+                            <div className="flex flex-col gap-2">
+                                <button
+                                    onClick={() => setIsCropMode(true)}
+                                    className="w-full bg-sky-600 hover:bg-sky-500 text-white font-extrabold uppercase py-3 rounded-lg text-xs tracking-widest flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                                    id="btn-adjust-crop"
+                                >
+                                    <div className="w-4 h-4">{Icons.Crop}</div>
+                                    <span>Adjust Crop Overlay</span>
+                                </button>
+                                {imageState.crop && (
+                                    <button
+                                        onClick={() => updateState('crop', null)}
+                                        className="w-full bg-neutral-900 hover:bg-neutral-800 text-rose-500 hover:text-rose-400 py-2.5 rounded text-[10px] font-extrabold uppercase tracking-widest transition-colors border border-neutral-800 cursor-pointer"
+                                        id="btn-remove-crop"
+                                    >
+                                        Remove Cropping (Full Image)
+                                    </button>
+                                )}
+                            </div>
                         </div>
                     </>
                 )}
