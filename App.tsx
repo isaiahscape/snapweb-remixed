@@ -123,6 +123,30 @@ const Icons = {
   Trash: <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="square" strokeLinejoin="miter" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>,
 };
 
+const homepageContainerVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.15,
+      delayChildren: 0.1,
+    }
+  }
+};
+
+const homepageItemVariants = {
+  hidden: { y: 25, opacity: 0 },
+  visible: {
+    y: 0,
+    opacity: 1,
+    transition: {
+      type: 'spring',
+      stiffness: 90,
+      damping: 14,
+    }
+  }
+};
+
 // Sidebar Section Component
 const SidebarSection: React.FC<{ title: string; children: React.ReactNode; defaultOpen?: boolean }> = ({ title, children, defaultOpen = true }) => {
     const [isOpen, setIsOpen] = useState(defaultOpen);
@@ -1653,10 +1677,15 @@ const App: React.FC = () => {
         </header>
 
         {/* Content container */}
-        <main className="flex-1 max-w-6xl mx-auto w-full px-6 py-12 flex flex-col justify-center gap-8 relative">
+        <motion.main
+          initial="hidden"
+          animate="visible"
+          variants={homepageContainerVariants}
+          className="flex-1 max-w-6xl mx-auto w-full px-6 py-12 flex flex-col justify-center gap-8 relative"
+        >
           
           {/* Headline */}
-          <div className="text-center max-w-2xl mx-auto mb-4">
+          <motion.div variants={homepageItemVariants} className="text-center max-w-2xl mx-auto mb-4">
             <h1 className="text-3xl font-extrabold tracking-tight text-white sm:text-4xl">
               Professional RAW & Photo Editing, <br/>
               <span className="bg-gradient-to-r from-neutral-200 to-neutral-400 bg-clip-text text-transparent">Directly in your Browser.</span>
@@ -1664,12 +1693,13 @@ const App: React.FC = () => {
             <p className="mt-3.5 text-xs text-neutral-400 leading-relaxed max-w-lg mx-auto">
               Snapseed for Web provides state-of-the-art selective editing, color grading, and on-device processing. No cloud uploads, complete privacy, absolute speed.
             </p>
-          </div>
+          </motion.div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-stretch">
             
             {/* Left Column: Local Uploader */}
-            <div 
+            <motion.div 
+              variants={homepageItemVariants}
               className={`relative flex flex-col justify-between rounded-2xl border transition-all duration-300 p-8 bg-neutral-950/40 backdrop-blur-sm
                 ${isDraggingOver 
                   ? 'border-neutral-200 bg-neutral-900/10 scale-[1.015]' 
@@ -1715,10 +1745,13 @@ const App: React.FC = () => {
                   Try Sample Photo
                 </button>
               </div>
-            </div>
+            </motion.div>
 
             {/* Right Column: Google Drive */}
-            <div className="flex flex-col justify-between rounded-2xl border border-neutral-800 hover:border-neutral-700 transition-all duration-300 p-8 bg-neutral-950/40 backdrop-blur-sm">
+            <motion.div 
+              variants={homepageItemVariants}
+              className="flex flex-col justify-between rounded-2xl border border-neutral-800 hover:border-neutral-700 transition-all duration-300 p-8 bg-neutral-950/40 backdrop-blur-sm"
+            >
               <div className="flex flex-col h-full">
                 
                 <div className="flex justify-between items-start border-b border-neutral-900 pb-4 mb-4 shrink-0">
@@ -1895,11 +1928,11 @@ const App: React.FC = () => {
                 )}
 
               </div>
-            </div>
+            </motion.div>
 
           </div>
 
-        </main>
+        </motion.main>
 
         {/* Global Loading Overlay */}
         {isLoadingFile && (
