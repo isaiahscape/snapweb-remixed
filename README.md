@@ -18,12 +18,15 @@ Load raw digital negative files such as `.dng`, `.cr2`, `.nef`, and `.arw` forma
 *   **Highlights & Shadows Recovery**: Real-time recovery curves to reconstruct blown highlights or gracefully elevate dark shadow noise.
 
 ### 2. Precise Global & Selective Adjustments
+*   **Film Simulations & Classic Looks Grouping**: Presets are divided into two clear segments—**Film Simulations** (featuring high-fidelity simulations like Portra LKP1, Moody Bronze LKP2, Fuji Superia LFP1, and Fuji Street LFS1) and **Classic Looks** for vintage/creative grades.
 *   **Global Filters**: Master control over Exposure, Contrast, Highlights, Shadows, Saturation, Warmth, Tint, Ambiance, Structure, Sharpening, Dehaze, Grain, and Vignette.
 *   **Selective Vector Masks (Local Adjustments)**: Draw high-performance local adjustments utilizing adjustable brush sizes and edge-softening (feather) controls. Layer masks with independent exposure, brightness, and contrast curves.
 *   **Interactive Cropping & Straightening**: Crop dimensions dynamically or straighten horizons with a granular $\pm45^{\circ}$ adjustment tool.
 
-### 3. Responsive & Touch-Optimized Layout
-*   **Fluid Layout**: Seamlessly shifts between standard desktop monitor viewports and compact vertical mobile grids.
+### 3. Responsive, Customizable & Touch-Optimized Layout
+*   **Adjustable Desktop Sidebar**: Drag to dynamically resize the control panel sidebar (ranging from 260px up to 600px width) on desktop viewports. The resize handle includes high-contrast active states.
+*   **Smart Scrollbar Autohide**: Custom-styled scrollbars elegantly fade to transparent after 3 seconds of scroll inactivity to ensure zero visual clutter, with full hover-trigger overrides.
+*   **Fluid Layout**: Seamlessly shifts between standard desktop monitor viewports and compact vertical mobile grids. Defaults to the **Tune** adjustments workspace on initial load.
 *   **Bottom Adjustment Tray**: Controls and toolbars dynamically reposition to the bottom of the viewport on touch interfaces, keeping the primary focus on the photograph layout without intrusive sidebars.
 *   **Touch Comparison**: Hold to Compare fully supports raw touch interactions (`onTouchStart`/`onTouchEnd`), letting you quickly flip between original and processed states easily.
 
