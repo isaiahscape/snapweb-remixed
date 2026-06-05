@@ -1,6 +1,6 @@
-# Remix: Snapseed Web Pro 📷
+# Remix: Snapseed Web 📷
 
-Snapseed Web Pro is a robust, high-performance, client-side digital photo editor and **non-destructive RAW development suite** running directly inside your browser. Built using modern React and Tailwind CSS, it enables seamless professional photo editing workflows, selective adjustment masks, and non-destructive pixel state rendering.
+Snapseed for Web is a robust, high-performance, client-side digital photo editor and **non-destructive RAW development suite** running directly inside your browser. Built using modern React and Tailwind CSS, it enables seamless professional photo editing workflows, selective adjustment masks, and non-destructive pixel state rendering.
 
 ## 🌟 Features
 
