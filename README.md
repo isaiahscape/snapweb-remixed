@@ -68,3 +68,13 @@ This command compiles static files cleanly into the `dist/` directory, optimized
 ## 🔒 Security & Privacy
 
 SnapWeb Pro processes all pixel-level translations and RAW data calculations **100% locally on the client's web browser environment**. Your private imagery is never uploaded to any remote storage system or server, keeping your workflow secure, private, and offline-accessible.
+
+---
+
+## 📄 License & Attribution
+
+This project is licensed under the MIT License combined with an unofficial workspace attribution. See the [LICENSE](./LICENSE) file for the full text.
+
+Recreated by @isaiahscape, generated initially with Google AI Studio by u/BetterAtPS on Reddit.
+
+All rights reserved to Google, Inc.
