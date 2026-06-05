@@ -2176,8 +2176,7 @@ const App: React.FC = () => {
                     className="max-w-full max-h-[calc(100vh-27rem)] md:max-h-[calc(100vh-8rem)] object-contain block pointer-events-none transition-transform duration-75"
                     style={{ 
                         opacity: isProcessing || isLoadingFile ? 0.8 : 1,
-                        transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-                        imageRendering: zoom > 1 ? 'pixelated' : 'auto'
+                        transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`
                     }}
                 />
                 
@@ -2187,8 +2186,7 @@ const App: React.FC = () => {
                     className="absolute inset-0 w-full h-full pointer-events-none transition-transform duration-75 mix-blend-normal"
                     style={{
                         transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-                        opacity: activeMaskId ? 1 : 0, // Only show when masking active? Or check showMaskOverlay
-                        imageRendering: zoom > 1 ? 'pixelated' : 'auto'
+                        opacity: activeMaskId ? 1 : 0 // Only show when masking active? Or check showMaskOverlay
                     }}
                 />
 
