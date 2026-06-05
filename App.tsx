@@ -65,6 +65,26 @@ const App: React.FC = () => {
 
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
 
+  // Workspace configuration (sidebar position left/right, show/hide UI for review)
+  const [sidebarPosition, setSidebarPosition] = useState<'left' | 'right'>(() => {
+    try {
+      const saved = localStorage.getItem('snapweb_sidebar_position');
+      return (saved === 'left' || saved === 'right') ? saved : 'right';
+    } catch {
+      return 'right';
+    }
+  });
+  const [hideUI, setHideUI] = useState(false);
+
+  const toggleSidebarPosition = () => {
+    const next = sidebarPosition === 'right' ? 'left' : 'right';
+    setSidebarPosition(next);
+    try {
+      localStorage.setItem('snapweb_sidebar_position', next);
+    } catch (e) {}
+    showToast(`Sidebar docked ${next}!`, 'success');
+  };
+
   // Copy/Paste Settings and Custom Toast Notifications
   const [copiedSettings, setCopiedSettings] = useState<Partial<ImageState> | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null);
@@ -93,6 +113,29 @@ const App: React.FC = () => {
       console.error("Failed to parse cached settings from localStorage", e);
     }
   }, []);
+
+  // Keyboard shortcut listener for review mode (Tab toggles interface HUD, Escape restores)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') {
+        return;
+      }
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        setHideUI(prev => {
+          const next = !prev;
+          showToast(next ? "Interface hidden. Press TAB to restore." : "Interface restored.", "success");
+          return next;
+        });
+      } else if (e.key === 'Escape' && hideUI) {
+        e.preventDefault();
+        setHideUI(false);
+        showToast("Interface restored.", "success");
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [hideUI]);
   
   // Color Mixer State
   const [activeColorChannel, setActiveColorChannel] = useState<ColorChannel>('red');
@@ -1387,7 +1430,7 @@ const App: React.FC = () => {
     <div className="flex flex-col h-screen w-full bg-black text-white overflow-hidden font-sans select-none">
       
       {/* Top Navigation */}
-      <header className="h-14 bg-black border-b border-neutral-900 flex justify-between items-center px-2 sm:px-4 shrink-0 z-30">
+      <header className={`h-14 bg-black border-b border-neutral-900 flex justify-between items-center px-2 sm:px-4 shrink-0 z-30 transition-all duration-300 ${hideUI ? '-mt-14 opacity-0 pointer-events-none' : ''}`}>
         <div className="flex items-center gap-1 sm:gap-4 md:gap-6">
             <button 
               onClick={() => {
@@ -1466,6 +1509,25 @@ const App: React.FC = () => {
                     title="Paste Adjustments"
                     className={`hover:bg-neutral-900 p-1.5 sm:p-2 transition-colors ${copiedSettings ? 'hover:text-emerald-500 text-emerald-400' : 'opacity-45 cursor-not-allowed text-neutral-500'}`}
                   />
+                 <IconButton 
+                    icon={sidebarPosition === 'right' ? (
+                      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2} className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M9 19H4a2 2 0 01-2-2V7a2 2 0 012-2h5m0 14h10a2 2 0 002-2V7a2 2 0 00-2-2H9m0 14V5" /></svg>
+                    ) : (
+                      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2} className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19h5a2 2 0 002-2V7a2 2 0 00-2-2h-5m0 14H5a2 2 0 01-2-2V7a2 2 0 012-2h10m0 14V5" /></svg>
+                    )} 
+                    onClick={toggleSidebarPosition} 
+                    title={`Dock Sidebar to ${sidebarPosition === 'right' ? 'Left' : 'Right'}`}
+                    className="hover:bg-neutral-900 p-1.5 sm:p-2 hover:text-sky-400 transition-colors"
+                  />
+                 <IconButton 
+                    icon={Icons.EyeOff} 
+                    onClick={() => {
+                        setHideUI(true);
+                        showToast("Interface hidden. Press TAB to restore.", "success");
+                    }} 
+                    title="Hide Interface / Review Photo (Tab)"
+                    className="hover:bg-neutral-900 p-1.5 sm:p-2 hover:text-cyan-400 transition-colors"
+                  />
                </>
              )}
              <button 
@@ -1488,10 +1550,27 @@ const App: React.FC = () => {
       </header>
 
       {/* Main Workspace */}
-      <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
+      <div className={`flex-1 flex flex-col ${sidebarPosition === 'left' ? 'md:flex-row-reverse' : 'md:flex-row'} overflow-hidden`}>
         
         {/* Center: Canvas */}
         <main className="flex-1 bg-[#0a0a0a] relative flex items-center justify-center p-3 sm:p-6 md:p-8 select-none overflow-hidden min-h-0 min-w-0">
+             {hideUI && (
+               <button 
+                 onClick={() => {
+                   setHideUI(false);
+                   showToast("Interface restored.", "success");
+                 }}
+                 className="absolute top-6 left-6 z-50 flex items-center gap-2 bg-neutral-900/95 border border-neutral-800 hover:border-neutral-750 rounded-xl px-4 py-2.5 shadow-2xl backdrop-blur-sm hover:bg-neutral-850 text-neutral-300 hover:text-white transition-all cursor-pointer text-[10px] font-bold tracking-wider uppercase"
+                 title="Show Editing Panel (Tab)"
+               >
+                 <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5} className="w-4 h-4 text-cyan-400 shrink-0">
+                   <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+                   <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                 </svg>
+                 <span>Show Interface</span>
+               </button>
+             )}
+
              {isComparing && (
                 <div className="absolute top-8 left-8 bg-white text-black px-3 py-1 rounded text-xs font-bold uppercase tracking-widest z-50 pointer-events-none shadow-xl">
                     Original
@@ -1633,8 +1712,14 @@ const App: React.FC = () => {
             )}
         </main>
 
-        {/* Right: Sidebar Controls */}
-        <aside className="w-full md:w-[320px] h-[340px] md:h-auto bg-[#050505] border-t md:border-t-0 md:border-l border-neutral-900 flex flex-col shrink-0 z-20 shadow-[0_-4px_24px_rgba(0,0,0,0.6)] md:shadow-none">
+        {/* Sidebar Controls */}
+        <aside className={`w-full h-[340px] md:h-auto bg-[#050505] flex flex-col shrink-0 z-20 transition-all duration-300 ease-in-out
+          ${sidebarPosition === 'left' ? 'border-t md:border-t-0 md:border-r border-neutral-900' : 'border-t md:border-t-0 md:border-l border-neutral-900'}
+          ${hideUI 
+            ? 'h-0 md:h-auto md:w-0 md:opacity-0 overflow-hidden pointer-events-none' 
+            : 'w-full md:w-[320px] shadow-[0_-4px_24px_rgba(0,0,0,0.6)] md:shadow-none'
+          }
+        `}>
             
             {/* Histogram */}
             <div className="p-4 border-b border-neutral-900 bg-black/50">
