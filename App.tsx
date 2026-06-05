@@ -63,6 +63,8 @@ const App: React.FC = () => {
   const [exportFormat, setExportFormat] = useState<'jpeg' | 'png'>('jpeg');
   const [exportQuality, setExportQuality] = useState<number>(0.95);
 
+  const [showCloseConfirm, setShowCloseConfirm] = useState(false);
+
   // Copy/Paste Settings and Custom Toast Notifications
   const [copiedSettings, setCopiedSettings] = useState<Partial<ImageState> | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null);
@@ -1389,11 +1391,7 @@ const App: React.FC = () => {
         <div className="flex items-center gap-1 sm:gap-4 md:gap-6">
             <button 
               onClick={() => {
-                if (confirm("Close this image and return to homepage? Unsaved changes will be lost.")) {
-                  setSourceImage(null);
-                  setImageState(DEFAULT_IMAGE_STATE);
-                  setActiveMaskId(null);
-                }
+                setShowCloseConfirm(true);
               }}
               className="text-neutral-400 hover:text-white flex items-center gap-1 sm:gap-1.5 text-[10px] sm:text-[11px] font-bold uppercase tracking-wider transition-colors mr-0.5 sm:mr-1 cursor-pointer bg-neutral-900 hover:bg-neutral-850 border border-neutral-800 px-1.5 sm:px-2.5 py-1.5 rounded"
               title="Close Image and Return"
@@ -2179,6 +2177,75 @@ const App: React.FC = () => {
                   className="flex-1 py-2.5 rounded-xl bg-white hover:bg-neutral-200 text-black text-[11px] font-bold uppercase tracking-wider transition-colors cursor-pointer"
                 >
                   Download
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {showCloseConfirm && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+            {/* Backdrop */}
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowCloseConfirm(false)}
+              className="absolute inset-0 bg-black/75 backdrop-blur-sm cursor-pointer"
+            />
+            
+            {/* Modal Body */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+              className="relative bg-neutral-900 border border-neutral-800 rounded-2xl w-full max-w-sm overflow-hidden z-10 shadow-2xl text-left"
+            >
+              <div className="p-5 border-b border-neutral-800 flex justify-between items-center bg-black/20">
+                <div className="flex items-center gap-2">
+                  <span className="text-amber-500 shrink-0">
+                    <AlertCircle className="w-4 h-4" />
+                  </span>
+                  <h3 className="text-sm font-bold tracking-wider uppercase text-white">Unsaved Changes</h3>
+                </div>
+                <button 
+                  onClick={() => setShowCloseConfirm(false)}
+                  className="p-1.5 rounded bg-neutral-800 hover:bg-neutral-750 text-neutral-400 hover:text-white transition-colors cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              
+              <div className="p-5 space-y-2">
+                <p className="text-[12px] sm:text-[13px] text-neutral-300 leading-relaxed">
+                  Are you sure you want to close this image and return to the homepage?
+                </p>
+                <p className="text-[10px] text-neutral-550 leading-relaxed font-medium">
+                  All interactive adjustments, crops, and live masking effects will be lost. This action is irreversible.
+                </p>
+              </div>
+
+              {/* Action buttons footer */}
+              <div className="p-5 border-t border-neutral-800 bg-black/10 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCloseConfirm(false)}
+                  className="flex-1 py-2.5 rounded-xl border border-neutral-800 text-[11px] font-bold uppercase text-neutral-400 hover:text-white hover:bg-neutral-850 transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowCloseConfirm(false);
+                    setSourceImage(null);
+                    setImageState(DEFAULT_IMAGE_STATE);
+                    setActiveMaskId(null);
+                  }}
+                  className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-[11px] font-bold uppercase tracking-wider transition-colors cursor-pointer"
+                >
+                  Close Image
                 </button>
               </div>
             </motion.div>
