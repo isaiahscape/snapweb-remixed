@@ -1386,8 +1386,8 @@ const App: React.FC = () => {
               <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
               <circle cx="12" cy="13" r="4" />
             </svg>
-            <div className="font-bold tracking-[0.2em] text-xs text-white">
-              SNAPWEB <span className="text-neutral-500 font-normal">PRO</span>
+            <div className="font-bold tracking-[0.18em] text-xs text-white uppercase">
+              SNAPSEED <span className="text-neutral-500 font-normal text-[10px]">FOR WEB</span>
             </div>
           </div>
           <div className="flex items-center gap-3 text-xs text-neutral-400">
@@ -1408,7 +1408,7 @@ const App: React.FC = () => {
               <span className="bg-gradient-to-r from-neutral-200 to-neutral-400 bg-clip-text text-transparent">Directly in your Browser.</span>
             </h1>
             <p className="mt-3.5 text-xs text-neutral-400 leading-relaxed max-w-lg mx-auto">
-              Inspired by Snapseed, SnapWeb provides state-of-the-art selective editing, color grading, and on-device processing. No cloud uploads, complete privacy, absolute speed.
+              Snapseed for Web provides state-of-the-art selective editing, color grading, and on-device processing. No cloud uploads, complete privacy, absolute speed.
             </p>
           </div>
 
@@ -1672,7 +1672,7 @@ const App: React.FC = () => {
             Source is at <a href="https://github.com/isaiahscape/snapweb-remixed" target="_blank" rel="noopener noreferrer" className="text-neutral-200 hover:text-blue-400 font-medium transition-colors underline decoration-neutral-800 hover:decoration-blue-400">isaiahscape/snapweb-remixed</a>
           </p>
           <p className="text-[10px] text-neutral-600 font-mono uppercase tracking-[0.2em] mt-1">
-            SnapWeb Pro • Secure Browser Image Engine
+            Snapseed for Web • Secure Browser Image Engine
           </p>
         </footer>
 
@@ -1696,8 +1696,8 @@ const App: React.FC = () => {
               <ArrowLeft className="w-3.5 h-3.5" />
               <span className="hidden min-[450px]:inline">Close</span>
             </button>
-            <div className="font-bold tracking-[0.25em] text-xs sm:text-sm text-white hidden md:block">
-                SNAPWEB <span className="text-neutral-600 font-normal">PRO</span>
+            <div className="font-bold tracking-[0.2em] text-xs sm:text-sm text-white hidden md:block uppercase">
+                SNAPSEED <span className="text-neutral-600 font-normal text-[10px] sm:text-xs">FOR WEB</span>
             </div>
             <div className="h-6 w-px bg-neutral-800 hidden md:block"></div>
             <div className="flex gap-1 sm:gap-2">
