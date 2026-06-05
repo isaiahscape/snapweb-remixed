@@ -98,7 +98,7 @@ export const loadRawImage = async (file: File): Promise<HTMLImageElement> => {
                         ctx.putImageData(imageData, 0, 0);
                         const img = new Image();
                         img.onload = () => resolve(img);
-                        img.src = canvas.toDataURL('image/jpeg', 0.9);
+                        img.src = canvas.toDataURL('image/png');
                         return;
                     }
                 }
@@ -519,7 +519,8 @@ const applyColorGrading = (
 export const processImage = async (
   sourceImage: HTMLImageElement,
   state: ImageState,
-  quality: 'preview' | 'full' = 'preview'
+  quality: 'preview' | 'full' = 'preview',
+  zoom: number = 1
 ): Promise<ImageData> => {
   
   // 0. Prepare Source (Handle Cropping first)
@@ -554,7 +555,8 @@ export const processImage = async (
   let height = srcHeight;
 
   if (quality === 'preview') {
-    const maxDim = 1200;
+    const baseMaxDim = 1200;
+    const maxDim = Math.min(Math.max(srcWidth, srcHeight), Math.ceil(baseMaxDim * zoom));
     if (width > maxDim || height > maxDim) {
       const ratio = Math.min(maxDim / width, maxDim / height);
       width = Math.floor(width * ratio);

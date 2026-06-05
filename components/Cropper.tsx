@@ -52,7 +52,7 @@ const Cropper: React.FC<CropperProps> = ({ image, initialCrop, onComplete, onCan
             const ctx = canvas.getContext('2d');
             if (ctx) {
                 ctx.drawImage(image, 0, 0, dW, dH);
-                const localUrl = canvas.toDataURL('image/jpeg', 0.85);
+                const localUrl = canvas.toDataURL('image/png');
                 setSafeSrc(localUrl);
             } else {
                 setSafeSrc(image.src);

@@ -653,7 +653,7 @@ const App: React.FC = () => {
       }
     }
     const img = new Image();
-    img.src = canvas.toDataURL('image/jpeg', 0.95);
+    img.src = canvas.toDataURL('image/png');
     return img;
   };
 
@@ -938,7 +938,7 @@ const App: React.FC = () => {
     const stateToUse = forceOriginal ? DEFAULT_IMAGE_STATE : imageState;
 
     try {
-        const imageData = await processImage(sourceImage, stateToUse, 'preview');
+        const imageData = await processImage(sourceImage, stateToUse, 'preview', zoom);
         
         const canvas = canvasRef.current;
         const ctx = canvas.getContext('2d');
@@ -954,7 +954,7 @@ const App: React.FC = () => {
     } catch (e) {
         console.error("Processing error:", e);
     }
-  }, [sourceImage, imageState]);
+  }, [sourceImage, imageState, zoom]);
 
   // Trigger update on state change
   useEffect(() => {
@@ -965,7 +965,7 @@ const App: React.FC = () => {
         });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [imageState, sourceImage, isComparing, isCropMode]);
+  }, [imageState, sourceImage, isComparing, isCropMode, zoom, updatePreview]);
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -2176,7 +2176,8 @@ const App: React.FC = () => {
                     className="max-w-full max-h-[calc(100vh-27rem)] md:max-h-[calc(100vh-8rem)] object-contain block pointer-events-none transition-transform duration-75"
                     style={{ 
                         opacity: isProcessing || isLoadingFile ? 0.8 : 1,
-                        transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` 
+                        transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+                        imageRendering: zoom > 1 ? 'pixelated' : 'auto'
                     }}
                 />
                 
@@ -2186,7 +2187,8 @@ const App: React.FC = () => {
                     className="absolute inset-0 w-full h-full pointer-events-none transition-transform duration-75 mix-blend-normal"
                     style={{
                         transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-                        opacity: activeMaskId ? 1 : 0 // Only show when masking active? Or check showMaskOverlay
+                        opacity: activeMaskId ? 1 : 0, // Only show when masking active? Or check showMaskOverlay
+                        imageRendering: zoom > 1 ? 'pixelated' : 'auto'
                     }}
                 />
 
