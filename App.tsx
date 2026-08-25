@@ -2494,10 +2494,10 @@ const App: React.FC = () => {
                     title="Hide Interface / Review Photo (Tab)"
                     className="hover:bg-neutral-900 p-1.5 sm:p-2 hover:text-cyan-400 transition-colors"
                   />
-                 <IconButton 
+                  <IconButton 
                     id="btn-header-histogram-toggle"
                     icon={
-                      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2} className={`w-5 h-5 ${showHistogram ? 'text-cyan-400' : ''}`}>
+                      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} className={`w-5 h-5 ${showHistogram ? 'text-cyan-400' : ''}`}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                       </svg>
                     } 
@@ -2512,7 +2512,7 @@ const App: React.FC = () => {
                     className={`p-1.5 sm:p-2 transition-colors hover:bg-neutral-900 ${showHistogram ? 'text-cyan-400 hover:text-cyan-350' : 'text-neutral-400 hover:text-white'}`}
                   />
                   <IconButton 
-                    icon={<Clock className="w-4 h-4 text-pink-400" />} 
+                    icon={<Clock className="w-5 h-5 text-pink-400" />} 
                     onClick={() => setShowRecentEditsModal(true)} 
                     title="Browse Recent Edits (Open as Tab)"
                     className="hover:bg-neutral-900 p-1.5 sm:p-2 hover:text-pink-300 transition-colors"
@@ -2525,10 +2525,10 @@ const App: React.FC = () => {
                 onMouseLeave={() => setIsComparing(false)}
                 onTouchStart={() => setIsComparing(true)}
                 onTouchEnd={() => setIsComparing(false)}
-                className="p-1.5 sm:p-2 text-neutral-400 hover:text-white transition-colors"
+                className={`p-1.5 sm:p-2 rounded hover:bg-neutral-900 transition-colors flex items-center justify-center cursor-pointer ${isComparing ? 'text-white bg-neutral-800' : 'text-neutral-400 hover:text-white'}`}
                 title="Hold to Compare"
              >
-                 <div className="w-4 h-4 sm:w-5 sm:h-5">{Icons.Compare}</div>
+                 <div className="w-5 h-5 flex items-center justify-center">{Icons.Compare}</div>
              </button>
              <div className="h-6 w-px bg-neutral-800 mx-0.5 sm:mx-2"></div>
               <button onClick={() => setShowExportModal(true)} className="bg-white text-black px-2 sm:px-5 py-1.5 rounded text-[10px] sm:text-xs font-bold tracking-wider hover:bg-neutral-200 transition flex items-center gap-1 sm:gap-2" title="Export & Share Options">

@@ -64,13 +64,14 @@ export const ToolButton: React.FC<ButtonProps> = ({ children, onClick, active, c
     </button>
 );
 
-export const IconButton: React.FC<Omit<ButtonProps, 'children'> & { icon: React.ReactNode, label?: string }> = ({ icon, label, onClick, active, className = "", title }) => (
+export const IconButton: React.FC<Omit<ButtonProps, 'children'> & { icon: React.ReactNode, label?: string, id?: string }> = ({ icon, label, onClick, active, className = "", title, id }) => (
     <button 
+        id={id}
         onClick={onClick}
         title={title || label}
-        className={`p-2 rounded hover:bg-neutral-800 text-neutral-400 hover:text-white transition-colors ${active ? 'text-white bg-neutral-800' : ''} ${className}`}
+        className={`p-1.5 sm:p-2 rounded hover:bg-neutral-800 text-neutral-400 hover:text-white transition-colors flex items-center justify-center shrink-0 cursor-pointer ${active ? 'text-white bg-neutral-800' : ''} ${className}`}
     >
-        <div className="w-5 h-5">{icon}</div>
+        <div className="w-5 h-5 flex items-center justify-center">{icon}</div>
         {label && <span className="text-[10px] uppercase mt-1">{label}</span>}
     </button>
 );
