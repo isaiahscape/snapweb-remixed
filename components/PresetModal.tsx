@@ -125,7 +125,7 @@ export const PresetModal: React.FC<PresetModalProps> = ({
     reader.onload = async (ev) => {
       try {
         const text = ev.target?.result as string;
-        const count = await importPresetsFromJSON(text);
+        const { count } = await importPresetsFromJSON(text);
         alert(`Successfully imported ${count} custom preset${count > 1 ? 's' : ''}!`);
         onPresetsImported();
         onClose();

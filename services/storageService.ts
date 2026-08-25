@@ -162,31 +162,62 @@ export async function exportPresetsAsJSON(): Promise<string> {
   }, null, 2);
 }
 
-export async function importPresetsFromJSON(jsonString: string): Promise<number> {
+export function exportSinglePresetAsJSON(preset: CustomPreset): string {
+  return JSON.stringify({
+    appName: 'Snapseed for Web',
+    type: 'preset',
+    version: '2.0',
+    exportedAt: new Date().toISOString(),
+    preset
+  }, null, 2);
+}
+
+export async function importPresetsFromJSON(jsonString: string): Promise<{ count: number; presets: CustomPreset[] }> {
   try {
     const data = JSON.parse(jsonString);
-    const presets: CustomPreset[] = Array.isArray(data) ? data : data.presets || [];
-    if (!Array.isArray(presets) || presets.length === 0) {
-      throw new Error('No valid presets found in JSON file.');
+    let rawList: any[] = [];
+
+    if (Array.isArray(data)) {
+      rawList = data;
+    } else if (data.presets && Array.isArray(data.presets)) {
+      rawList = data.presets;
+    } else if (data.preset && typeof data.preset === 'object') {
+      rawList = [data.preset];
+    } else if (data.adjustments && (data.name || typeof data.brightness === 'number' || typeof data.contrast === 'number')) {
+      rawList = [data];
+    } else if (typeof data.brightness === 'number' || typeof data.contrast === 'number' || data.curves || data.colorGrade) {
+      // Direct raw state object
+      rawList = [{
+        name: data.name || 'Imported Look',
+        description: data.description || 'Imported photo adjustments',
+        adjustments: data
+      }];
     }
 
-    let count = 0;
-    for (const p of presets) {
-      if (p.name && p.adjustments) {
-        await saveCustomPreset({
-          id: p.id || 'preset_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
-          name: p.name,
-          description: p.description || '',
-          createdAt: p.createdAt || Date.now(),
-          gradient: p.gradient || 'from-indigo-500 via-purple-500 to-pink-500',
-          adjustments: p.adjustments
-        });
-        count++;
+    if (rawList.length === 0) {
+      throw new Error('No valid preset adjustments found in this file.');
+    }
+
+    const savedPresets: CustomPreset[] = [];
+    for (const p of rawList) {
+      const adjustments = p.adjustments || p;
+      if (adjustments && typeof adjustments === 'object') {
+        const item: CustomPreset = {
+          id: 'preset_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+          name: p.name || 'Custom Look',
+          description: p.description || 'Imported photo filter',
+          createdAt: Date.now(),
+          gradient: p.gradient || 'from-cyan-400 via-blue-500 to-indigo-600',
+          adjustments
+        };
+        await saveCustomPreset(item);
+        savedPresets.push(item);
       }
     }
-    return count;
+
+    return { count: savedPresets.length, presets: savedPresets };
   } catch (err: any) {
-    throw new Error('Failed to parse preset pack: ' + (err.message || 'Invalid JSON'));
+    throw new Error('Failed to parse preset file: ' + (err.message || 'Invalid JSON'));
   }
 }
 

@@ -33,13 +33,16 @@ import {
   RecentEditRecord,
   saveCustomPreset,
   getCustomPresets,
-  deleteCustomPreset
+  deleteCustomPreset,
+  exportSinglePresetAsJSON,
+  exportPresetsAsJSON,
+  importPresetsFromJSON
 } from './services/storageService';
 import { 
   RotateCw, RotateCcw, FlipHorizontal, FlipVertical, Loader2, FolderOpen, Cloud, LogOut, 
   RefreshCw, Globe, Settings2, ArrowLeft, AlertCircle, ZoomIn, ZoomOut, Maximize2, 
   Upload as LucideUpload, X, Share2, Copy, Check, Mail, Link, Clock, Trash2, Layers,
-  Bookmark, Sparkles, Plus, Stamp
+  Bookmark, Sparkles, Plus, Stamp, Download, Upload
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ExifReader from 'exifreader';
@@ -286,6 +289,61 @@ const App: React.FC = () => {
   useEffect(() => {
     getCustomPresets().then(items => setCustomPresets(items)).catch(console.warn);
   }, []);
+
+  const presetFileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImportPresetFile = async (file: File) => {
+    try {
+      const text = await file.text();
+      const { count, presets } = await importPresetsFromJSON(text);
+      if (presets.length > 0) {
+        setCustomPresets(prev => [...presets, ...prev]);
+        applyLook(presets[0].adjustments, presets[0].id);
+        showToast(`Imported & applied preset "${presets[0].name}"!`, "success");
+      }
+    } catch (err: any) {
+      console.error("Failed to import preset:", err);
+      showToast(err.message || "Failed to import preset", "error");
+    }
+  };
+
+  const handleExportSinglePreset = (preset: CustomPreset, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      const json = exportSinglePresetAsJSON(preset);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const safeName = preset.name.replace(/[^a-z0-9_-]/gi, '_').toLowerCase();
+      a.download = `preset_${safeName}.json`;
+      a.href = url;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast(`Exported "${preset.name}.json"`, "success");
+    } catch (err) {
+      console.error("Failed to export preset:", err);
+    }
+  };
+
+  const handleExportAllPresets = async () => {
+    try {
+      const json = await exportPresetsAsJSON();
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.download = `snapseed_custom_presets_${new Date().toISOString().slice(0, 10)}.json`;
+      a.href = url;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast(`Exported all ${customPresets.length} presets!`, "success");
+    } catch (err) {
+      console.error("Failed to export presets:", err);
+    }
+  };
 
   const handleDeleteCustomPreset = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -1105,6 +1163,11 @@ const App: React.FC = () => {
     e.preventDefault();
     setIsDraggingOver(false);
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const firstFile = e.dataTransfer.files[0];
+      if (firstFile.name.toLowerCase().endsWith('.json')) {
+        handleImportPresetFile(firstFile);
+        return;
+      }
       loadFiles(e.dataTransfer.files);
     }
   };
@@ -2765,8 +2828,28 @@ const App: React.FC = () => {
                                     title="Save Current Adjustments as Custom Preset"
                                 >
                                     <Plus className="w-3 h-3" />
-                                    <span>Save Look</span>
+                                    <span>Save</span>
                                 </button>
+                                <button
+                                    onClick={() => presetFileInputRef.current?.click()}
+                                    className="text-[9px] text-neutral-300 hover:text-white font-extrabold uppercase bg-neutral-850 hover:bg-neutral-750 border border-neutral-750 px-2 py-1 rounded transition-all cursor-pointer flex items-center gap-1 shadow-sm"
+                                    title="Upload & Apply Custom Preset (.json)"
+                                >
+                                    <Upload className="w-3 h-3 text-cyan-400" />
+                                    <span>Import</span>
+                                </button>
+                                <input
+                                    ref={presetFileInputRef}
+                                    type="file"
+                                    accept=".json,application/json"
+                                    className="hidden"
+                                    onChange={(e) => {
+                                        if (e.target.files?.[0]) {
+                                            handleImportPresetFile(e.target.files[0]);
+                                        }
+                                        e.target.value = '';
+                                    }}
+                                />
                                 {appliedLookId && (
                                     <button
                                         onClick={() => {
@@ -2827,6 +2910,14 @@ const App: React.FC = () => {
                                             <Bookmark className="w-3 h-3 text-pink-400" />
                                             <span>My Custom Presets ({customPresets.length})</span>
                                         </div>
+                                        <button
+                                            onClick={handleExportAllPresets}
+                                            className="text-[8px] font-bold text-neutral-400 hover:text-white uppercase bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 px-1.5 py-0.5 rounded transition cursor-pointer flex items-center gap-1"
+                                            title="Export all custom presets as JSON pack"
+                                        >
+                                            <Download className="w-2.5 h-2.5 text-pink-400" />
+                                            <span>Export All</span>
+                                        </button>
                                     </div>
                                     <div className="grid grid-cols-2 gap-2">
                                         {customPresets.map((preset) => {
@@ -2850,13 +2941,22 @@ const App: React.FC = () => {
                                                                 <span className={`text-[10px] font-extrabold uppercase tracking-wide truncate ${isSelected ? 'text-pink-400' : 'text-neutral-200'}`}>
                                                                     {preset.name}
                                                                 </span>
-                                                                <button
-                                                                    onClick={(e) => handleDeleteCustomPreset(preset.id, e)}
-                                                                    className="p-1 rounded text-neutral-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition cursor-pointer"
-                                                                    title="Delete Preset"
-                                                                >
-                                                                    <Trash2 className="w-3 h-3" />
-                                                                </button>
+                                                                <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition">
+                                                                    <button
+                                                                        onClick={(e) => handleExportSinglePreset(preset, e)}
+                                                                        className="p-1 rounded text-neutral-400 hover:text-cyan-400 transition cursor-pointer"
+                                                                        title="Download Preset (.json)"
+                                                                    >
+                                                                        <Download className="w-3 h-3" />
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={(e) => handleDeleteCustomPreset(preset.id, e)}
+                                                                        className="p-1 rounded text-neutral-400 hover:text-rose-400 transition cursor-pointer"
+                                                                        title="Delete Preset"
+                                                                    >
+                                                                        <Trash2 className="w-3 h-3" />
+                                                                    </button>
+                                                                </div>
                                                             </div>
                                                             <div className="text-[8px] text-neutral-400 leading-normal line-clamp-1 mt-0.5" title={preset.description}>
                                                                 {preset.description || 'Custom look'}
