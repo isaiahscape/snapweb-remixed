@@ -50,7 +50,7 @@ export const PictureTabs: React.FC<PictureTabsProps> = ({
   };
 
   return (
-    <div className="h-11 bg-[#0c0c0c] border-b border-neutral-800 flex items-center justify-between px-3 shrink-0 select-none overflow-hidden">
+    <div className="relative z-40 h-11 bg-[#0c0c0c] border-b border-neutral-800 flex items-center justify-between px-3 shrink-0 select-none overflow-visible">
       <div 
         ref={scrollContainerRef}
         className="flex items-center gap-1.5 overflow-x-auto custom-scrollbar h-full py-1 pr-2 max-w-[calc(100%-160px)] sm:max-w-[calc(100%-200px)]"
@@ -142,7 +142,7 @@ export const PictureTabs: React.FC<PictureTabsProps> = ({
             </button>
 
             {showBatchMenu && (
-              <div className="absolute right-0 top-full mt-1.5 w-52 bg-neutral-900 border border-neutral-800 rounded-lg shadow-xl py-1.5 z-50 text-left">
+              <div className="absolute right-0 top-full mt-1.5 w-56 bg-neutral-900 border border-neutral-800 rounded-lg shadow-2xl py-1.5 z-50 text-left">
                 <button
                   onClick={() => {
                     setShowBatchMenu(false);
