@@ -285,6 +285,8 @@ const App: React.FC = () => {
   const [showHistogram, setShowHistogram] = useState<boolean>(false);
   const [customPresets, setCustomPresets] = useState<CustomPreset[]>([]);
   const [showPresetModal, setShowPresetModal] = useState<boolean>(false);
+  const [showRecentEditsModal, setShowRecentEditsModal] = useState<boolean>(false);
+  const [recentsSearchQuery, setRecentsSearchQuery] = useState<string>('');
 
   useEffect(() => {
     getCustomPresets().then(items => setCustomPresets(items)).catch(console.warn);
@@ -789,6 +791,14 @@ const App: React.FC = () => {
   const handleOpenRecentEdit = async (recent: RecentEditRecord) => {
     setIsLoadingFile(true);
     try {
+      const existing = pictures.find(p => p.id === recent.id || (p.name === recent.name && p.imageDataUrl === recent.imageDataUrl));
+      if (existing) {
+        setActivePictureId(existing.id);
+        setShowRecentEditsModal(false);
+        showToast(`Switched to tab "${recent.name}"`, 'info');
+        return;
+      }
+
       const img = await new Promise<HTMLImageElement>((resolve, reject) => {
         const image = new Image();
         image.onload = () => resolve(image);
@@ -797,7 +807,7 @@ const App: React.FC = () => {
       });
 
       const session: PictureSession = {
-        id: recent.id,
+        id: recent.id || ('pic_' + Date.now()),
         name: recent.name,
         sourceImage: img,
         imageDataUrl: recent.imageDataUrl,
@@ -810,9 +820,10 @@ const App: React.FC = () => {
         historyIndex: 0
       };
 
-      setPictures([session]);
+      setPictures(prev => [...prev, session]);
       setActivePictureId(session.id);
-      showToast(`Opened "${recent.name}"`, 'success');
+      setShowRecentEditsModal(false);
+      showToast(`Opened "${recent.name}" in new tab`, 'success');
     } catch (err) {
       console.error("Failed to open recent edit:", err);
       showToast("Failed to open recent edit", "error");
@@ -2500,6 +2511,12 @@ const App: React.FC = () => {
                     title="Toggle Live Histogram (H)"
                     className={`p-1.5 sm:p-2 transition-colors hover:bg-neutral-900 ${showHistogram ? 'text-cyan-400 hover:text-cyan-350' : 'text-neutral-400 hover:text-white'}`}
                   />
+                  <IconButton 
+                    icon={<Clock className="w-4 h-4 text-pink-400" />} 
+                    onClick={() => setShowRecentEditsModal(true)} 
+                    title="Browse Recent Edits (Open as Tab)"
+                    className="hover:bg-neutral-900 p-1.5 sm:p-2 hover:text-pink-300 transition-colors"
+                  />
                </>
              )}
              <button 
@@ -2528,6 +2545,7 @@ const App: React.FC = () => {
         onSelectPicture={(id) => setActivePictureId(id)}
         onClosePicture={handleClosePicture}
         onAddPictures={(files) => loadFiles(files)}
+        onOpenRecents={() => setShowRecentEditsModal(true)}
         onApplyToAll={handleApplyToAll}
         onExportAll={handleExportAll}
         onResetAll={handleResetAll}
@@ -4597,6 +4615,152 @@ const App: React.FC = () => {
             showToast("Presets imported successfully!", "success");
           }}
         />
+
+        {showRecentEditsModal && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowRecentEditsModal(false)}
+              className="absolute inset-0 bg-black/80 backdrop-blur-sm cursor-pointer"
+            />
+
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              transition={{ duration: 0.2 }}
+              className="relative bg-neutral-900 border border-neutral-800 rounded-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden z-10 shadow-2xl text-left"
+            >
+              {/* Modal Header */}
+              <div className="p-4 sm:p-5 border-b border-neutral-800 flex justify-between items-center bg-black/20 shrink-0">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-pink-500/10 border border-pink-500/30 flex items-center justify-center">
+                    <Clock className="w-4 h-4 text-pink-400" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black tracking-wider uppercase text-white">Recent Edits & Projects</h3>
+                    <p className="text-[10px] text-neutral-400">Open any previous project into an active workspace tab</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowRecentEditsModal(false)}
+                  className="p-1.5 rounded bg-neutral-800 hover:bg-neutral-750 text-neutral-400 hover:text-white transition cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Search bar if multiple recents */}
+              {recentEdits.length > 3 && (
+                <div className="px-5 pt-3 pb-1 shrink-0">
+                  <input
+                    type="text"
+                    value={recentsSearchQuery}
+                    onChange={(e) => setRecentsSearchQuery(e.target.value)}
+                    placeholder="Search by photo name..."
+                    className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-2 text-xs text-white placeholder:text-neutral-600 focus:outline-none focus:border-neutral-600"
+                  />
+                </div>
+              )}
+
+              {/* Modal Content / Cards */}
+              <div className="p-5 overflow-y-auto custom-scrollbar flex-1 space-y-4">
+                {recentEdits.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-center">
+                    <div className="w-12 h-12 rounded-2xl bg-neutral-850 border border-neutral-800 flex items-center justify-center mb-3">
+                      <Clock className="w-6 h-6 text-neutral-600" />
+                    </div>
+                    <span className="text-sm font-bold text-neutral-300">No Recent Edits Found</span>
+                    <p className="text-xs text-neutral-500 max-w-xs mt-1">
+                      Photos and edits you work on will be saved locally so you can resume anytime.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                    {recentEdits
+                      .filter(r => !recentsSearchQuery || r.name.toLowerCase().includes(recentsSearchQuery.toLowerCase()))
+                      .map((recent) => {
+                        const isOpen = pictures.some(p => p.id === recent.id || (p.name === recent.name && p.imageDataUrl === recent.imageDataUrl));
+                        return (
+                          <div
+                            key={recent.id}
+                            onClick={() => handleOpenRecentEdit(recent)}
+                            className={`group relative flex flex-col rounded-xl overflow-hidden border bg-neutral-950/60 transition-all cursor-pointer hover:border-pink-500/40 hover:shadow-lg ${
+                              isOpen ? 'border-pink-500/50 ring-1 ring-pink-500/30' : 'border-neutral-800'
+                            }`}
+                          >
+                            <div className="aspect-[4/3] bg-neutral-900 overflow-hidden relative">
+                              <img
+                                src={recent.thumbnailDataUrl || recent.imageDataUrl}
+                                alt={recent.name}
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                              />
+                              {recent.isRaw && (
+                                <span className="absolute top-2 left-2 text-[8px] font-bold uppercase tracking-wider bg-amber-500/90 text-black px-1.5 py-0.5 rounded shadow">
+                                  RAW
+                                </span>
+                              )}
+                              {isOpen && (
+                                <span className="absolute top-2 right-2 text-[8px] font-bold uppercase tracking-wider bg-pink-500 text-white px-1.5 py-0.5 rounded shadow">
+                                  Active Tab
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="p-3 flex flex-col justify-between flex-1">
+                              <div>
+                                <div className="text-xs font-bold text-white truncate" title={recent.name}>
+                                  {recent.name}
+                                </div>
+                                <div className="text-[10px] text-neutral-500 font-mono mt-0.5">
+                                  {new Date(recent.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                </div>
+                              </div>
+
+                              <div className="flex items-center justify-between mt-3 pt-2 border-t border-neutral-850">
+                                <span className="text-[10px] font-bold text-pink-400 group-hover:text-pink-300 uppercase tracking-wider">
+                                  {isOpen ? 'Switch to Tab →' : '+ Open as Tab'}
+                                </span>
+                                <button
+                                  onClick={(e) => handleDeleteRecentEdit(recent.id, e)}
+                                  className="p-1 rounded text-neutral-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition cursor-pointer"
+                                  title="Delete from Recents"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                )}
+              </div>
+
+              {/* Modal Footer */}
+              {recentEdits.length > 0 && (
+                <div className="p-4 border-t border-neutral-800 bg-black/20 flex justify-between items-center shrink-0">
+                  <button
+                    type="button"
+                    onClick={handleClearAllRecents}
+                    className="text-[10px] font-bold text-neutral-500 hover:text-red-400 uppercase tracking-wider transition cursor-pointer"
+                  >
+                    Clear History
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowRecentEditsModal(false)}
+                    className="px-4 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-750 text-white text-xs font-bold uppercase tracking-wider transition cursor-pointer"
+                  >
+                    Done
+                  </button>
+                </div>
+              )}
+            </motion.div>
+          </div>
+        )}
       </AnimatePresence>
 
     </div>

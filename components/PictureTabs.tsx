@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { PictureSession } from '../types';
-import { Plus, X, Layers, Copy, Download, RotateCcw, ChevronDown } from 'lucide-react';
+import { Plus, X, Layers, Copy, Download, RotateCcw, ChevronDown, Clock } from 'lucide-react';
 
 interface PictureTabsProps {
   pictures: PictureSession[];
@@ -8,6 +8,7 @@ interface PictureTabsProps {
   onSelectPicture: (id: string) => void;
   onClosePicture: (id: string) => void;
   onAddPictures: (files: FileList) => void;
+  onOpenRecents?: () => void;
   onApplyToAll: () => void;
   onExportAll: () => void;
   onResetAll: () => void;
@@ -20,6 +21,7 @@ export const PictureTabs: React.FC<PictureTabsProps> = ({
   onSelectPicture,
   onClosePicture,
   onAddPictures,
+  onOpenRecents,
   onApplyToAll,
   onExportAll,
   onResetAll,
@@ -114,6 +116,17 @@ export const PictureTabs: React.FC<PictureTabsProps> = ({
           <Plus className="w-3.5 h-3.5" />
           <span className="text-[11px] font-medium hidden sm:inline">Add Photos</span>
         </button>
+
+        {onOpenRecents && (
+          <button
+            onClick={onOpenRecents}
+            className="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs text-neutral-400 hover:text-white bg-neutral-900/60 hover:bg-neutral-850 border border-neutral-800 hover:border-neutral-700 transition-colors shrink-0 cursor-pointer"
+            title="Open Recent Edits in New Tab"
+          >
+            <Clock className="w-3.5 h-3.5 text-pink-400" />
+            <span className="text-[11px] font-medium hidden sm:inline">Recents</span>
+          </button>
+        )}
 
         <input
           ref={fileInputRef}
