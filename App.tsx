@@ -1,39 +1,40 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { DEFAULT_IMAGE_STATE, ImageState, ColorChannel, ColorAdjustment, MaskLayer, DEFAULT_MASK_SETTINGS, DEFAULT_COLOR_GRADE, LOOKS_PRESETS, LookPreset } from './types';
+import { 
+  DEFAULT_IMAGE_STATE, 
+  ImageState, 
+  ColorChannel, 
+  ColorAdjustment, 
+  MaskLayer, 
+  DEFAULT_MASK_SETTINGS, 
+  DEFAULT_COLOR_GRADE, 
+  LOOKS_PRESETS, 
+  LookPreset,
+  PictureSession,
+  LoadedFileInfo,
+  ExifData
+} from './types';
 import { processImage, generateResultUrl, loadRawImage, getClosestColorChannel } from './services/imageProcessor';
 import Histogram from './components/Histogram';
 import { CurvesEditor } from './components/CurvesEditor';
 import { Slider, ToolButton, IconButton } from './components/Controls';
 import Cropper from './components/Cropper';
 import ColorMixer from './components/ColorMixer';
-import { RotateCw, RotateCcw, FlipHorizontal, FlipVertical, Loader2, FolderOpen, Cloud, LogOut, RefreshCw, Globe, Settings2, ArrowLeft, AlertCircle, ZoomIn, ZoomOut, Maximize2, Upload as LucideUpload, X, Share2, Copy, Check, Mail, Link } from 'lucide-react';
+import { PictureTabs } from './components/PictureTabs';
+import { 
+  saveRecentEdit, 
+  getRecentEdits, 
+  deleteRecentEdit, 
+  clearAllRecentEdits, 
+  RecentEditRecord 
+} from './services/storageService';
+import { 
+  RotateCw, RotateCcw, FlipHorizontal, FlipVertical, Loader2, FolderOpen, Cloud, LogOut, 
+  RefreshCw, Globe, Settings2, ArrowLeft, AlertCircle, ZoomIn, ZoomOut, Maximize2, 
+  Upload as LucideUpload, X, Share2, Copy, Check, Mail, Link, Clock, Trash2, Layers 
+} from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ExifReader from 'exifreader';
-
-interface ExifData {
-  make?: string;
-  model?: string;
-  lens?: string;
-  focalLength?: string;
-  aperture?: string;
-  shutterSpeed?: string;
-  iso?: string;
-  dateTime?: string;
-  software?: string;
-  latitude?: string;
-  longitude?: string;
-}
-
-interface LoadedFileInfo {
-  name: string;
-  size: number;
-  type: string;
-  width: number;
-  height: number;
-  lastModified?: string;
-  exif?: ExifData;
-}
 
 const generateRealisticExif = (name: string, width: number, height: number): ExifData => {
   const models = [
@@ -105,6 +106,25 @@ const parseFileMetadata = async (file: File, imgWidth: number, imgHeight: number
   return info;
 };
 
+const generateThumbnail = (img: HTMLImageElement, maxDim = 120): string => {
+  try {
+    const canvas = document.createElement('canvas');
+    const w = img.naturalWidth || img.width || 120;
+    const h = img.naturalHeight || img.height || 120;
+    const ratio = Math.min(maxDim / w, maxDim / h);
+    canvas.width = Math.max(20, Math.floor(w * ratio));
+    canvas.height = Math.max(20, Math.floor(h * ratio));
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      return canvas.toDataURL('image/jpeg', 0.7);
+    }
+  } catch (err) {
+    console.warn("Thumbnail generation failed:", err);
+  }
+  return '';
+};
+
 // Modern Phosphor-style Icons (SVG)
 const Icons = {
   Upload: <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="square" strokeLinejoin="miter" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>,
@@ -171,27 +191,87 @@ const SidebarSection: React.FC<{ title: string; children: React.ReactNode; defau
 };
 
 const App: React.FC = () => {
-  const [sourceImage, setSourceImage] = useState<HTMLImageElement | null>(null);
+  const [pictures, setPictures] = useState<PictureSession[]>([]);
+  const [activePictureId, setActivePictureId] = useState<string | null>(null);
+  const [recentEdits, setRecentEdits] = useState<RecentEditRecord[]>([]);
+  const [isExportingBatch, setIsExportingBatch] = useState<boolean>(false);
+
+  const activePicture = pictures.find(p => p.id === activePictureId) || pictures[0] || null;
+  const sourceImage = activePicture?.sourceImage || null;
+  const imageState = activePicture?.state || DEFAULT_IMAGE_STATE;
+  const loadedFileInfo = activePicture?.info || null;
+  const isRaw = activePicture?.isRaw || false;
+  const appliedLookId = activePicture?.appliedLookId || null;
+
+  const setImageState = useCallback((updater: ImageState | ((prev: ImageState) => ImageState)) => {
+    setPictures(prev => {
+      if (prev.length === 0) return prev;
+      const targetId = activePictureId || prev[0].id;
+      return prev.map(p => {
+        if (p.id === targetId) {
+          const nextState = typeof updater === 'function' ? updater(p.state) : updater;
+          return { ...p, state: nextState };
+        }
+        return p;
+      });
+    });
+  }, [activePictureId]);
+
+  const setAppliedLookId = useCallback((lookId: string | null | ((prev: string | null) => string | null)) => {
+    setPictures(prev => {
+      if (prev.length === 0) return prev;
+      const targetId = activePictureId || prev[0].id;
+      return prev.map(p => {
+        if (p.id === targetId) {
+          const nextLook = typeof lookId === 'function' ? lookId(p.appliedLookId) : lookId;
+          return { ...p, appliedLookId: nextLook };
+        }
+        return p;
+      });
+    });
+  }, [activePictureId]);
+
+  const setLoadedFileInfo = useCallback((info: LoadedFileInfo | null | ((prev: LoadedFileInfo | null) => LoadedFileInfo | null)) => {
+    setPictures(prev => {
+      if (prev.length === 0) return prev;
+      const targetId = activePictureId || prev[0].id;
+      return prev.map(p => {
+        if (p.id === targetId) {
+          const nextInfo = typeof info === 'function' ? info(p.info) : info;
+          return nextInfo ? { ...p, info: nextInfo } : p;
+        }
+        return p;
+      });
+    });
+  }, [activePictureId]);
+
+  const setIsRaw = useCallback((val: boolean) => {
+    setPictures(prev => {
+      if (prev.length === 0) return prev;
+      const targetId = activePictureId || prev[0].id;
+      return prev.map(p => p.id === targetId ? { ...p, isRaw: val } : p);
+    });
+  }, [activePictureId]);
+
+  const setSourceImage = useCallback((img: HTMLImageElement | null) => {
+    if (!img) {
+      setPictures([]);
+      setActivePictureId(null);
+    }
+  }, []);
+
   const [previewData, setPreviewData] = useState<ImageData | null>(null);
-  const [imageState, setImageState] = useState<ImageState>(DEFAULT_IMAGE_STATE);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isLoadingFile, setIsLoadingFile] = useState(false);
   const [isComparing, setIsComparing] = useState(false);
-  const [isRaw, setIsRaw] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const [exportFormat, setExportFormat] = useState<'jpeg' | 'png'>('jpeg');
   const [exportQuality, setExportQuality] = useState<number>(0.95);
   const [activeModalTab, setActiveModalTab] = useState<'export' | 'share'>('export');
   const [isCopied, setIsCopied] = useState(false);
-
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
-
-  // Loaded image metadata (EXIF details) and configuration state
-  const [loadedFileInfo, setLoadedFileInfo] = useState<LoadedFileInfo | null>(null);
   const [preserveExif, setPreserveExif] = useState<boolean>(true);
-
-  // Floating Exposure Histogram visibility state (defaults to false for clean preview focus)
   const [showHistogram, setShowHistogram] = useState<boolean>(false);
 
   // Workspace configuration (sidebar position left/right, show/hide UI for review)
@@ -373,7 +453,6 @@ const App: React.FC = () => {
 
   // Snapseed Tab-based & Tool States
   const [activePanelTab, setActivePanelTab] = useState<'looks' | 'tune' | 'creative' | 'local' | 'geometry'>('tune');
-  const [appliedLookId, setAppliedLookId] = useState<string | null>(null);
   const [isAddingSelective, setIsAddingSelective] = useState(false);
   const [focusedSelectiveId, setFocusedSelectiveId] = useState<string | null>(null);
   const [isHealingBrushActive, setIsHealingBrushActive] = useState(false);
@@ -509,6 +588,250 @@ const App: React.FC = () => {
     }
   };
 
+  // Auto-save active picture to IndexedDB on edits
+  useEffect(() => {
+    if (!activePicture || !activePicture.sourceImage || !activePicture.imageDataUrl) return;
+
+    const timer = setTimeout(() => {
+      saveRecentEdit({
+        id: activePicture.id,
+        name: activePicture.name,
+        lastModified: Date.now(),
+        thumbnailDataUrl: activePicture.thumbnailUrl,
+        imageDataUrl: activePicture.imageDataUrl,
+        mimeType: activePicture.info.type || 'image/jpeg',
+        isRaw: activePicture.isRaw,
+        imageState: activePicture.state,
+        fileInfo: activePicture.info,
+        appliedLookId: activePicture.appliedLookId
+      }).catch(err => console.warn("Auto-save recent edit failed:", err));
+    }, 600);
+
+    return () => clearTimeout(timer);
+  }, [activePicture?.state, activePicture?.id, activePicture?.appliedLookId]);
+
+  // Load recent edits when on homepage
+  useEffect(() => {
+    if (pictures.length === 0) {
+      getRecentEdits().then(items => setRecentEdits(items)).catch(console.warn);
+    }
+  }, [pictures.length]);
+
+  const createPictureSession = async (
+    file: File,
+    img: HTMLImageElement,
+    dataUrl: string,
+    isRawFile: boolean,
+    customState?: ImageState,
+    appliedLook?: string | null
+  ): Promise<PictureSession> => {
+    const metadata = await parseFileMetadata(
+      file,
+      img.naturalWidth || img.width || 1920,
+      img.naturalHeight || img.height || 1080
+    );
+    const thumbUrl = generateThumbnail(img);
+    const id = 'pic_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+
+    return {
+      id,
+      name: file.name,
+      sourceImage: img,
+      imageDataUrl: dataUrl,
+      thumbnailUrl: thumbUrl,
+      state: customState || DEFAULT_IMAGE_STATE,
+      info: metadata,
+      isRaw: isRawFile,
+      appliedLookId: appliedLook || null,
+      history: [customState || DEFAULT_IMAGE_STATE],
+      historyIndex: 0
+    };
+  };
+
+  const loadFiles = async (files: FileList | File[]) => {
+    if (!files || files.length === 0) return;
+    setIsLoadingFile(true);
+    const newSessions: PictureSession[] = [];
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const fileName = file.name;
+      const lowerName = fileName.toLowerCase();
+      const isRawFile = lowerName.endsWith('.dng') || lowerName.endsWith('.cr2') || lowerName.endsWith('.nef') || lowerName.endsWith('.arw');
+
+      try {
+        let img: HTMLImageElement;
+        let dataUrl = '';
+
+        if (isRawFile) {
+          img = await loadRawImage(file);
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.min(1920, img.naturalWidth || 1920);
+          canvas.height = Math.min(1080, img.naturalHeight || 1080);
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+          }
+        } else {
+          dataUrl = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (ev) => resolve(ev.target?.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+          });
+          img = await new Promise<HTMLImageElement>((resolve, reject) => {
+            const image = new Image();
+            image.onload = () => resolve(image);
+            image.onerror = reject;
+            image.src = dataUrl;
+          });
+        }
+
+        const session = await createPictureSession(file, img, dataUrl, isRawFile);
+        newSessions.push(session);
+      } catch (err) {
+        console.error("Failed to load file:", fileName, err);
+      }
+    }
+
+    setIsLoadingFile(false);
+
+    if (newSessions.length > 0) {
+      setPictures(prev => [...prev, ...newSessions]);
+      setActivePictureId(newSessions[0].id);
+      showToast(`Loaded ${newSessions.length} photo${newSessions.length > 1 ? 's' : ''}!`, 'success');
+    }
+  };
+
+  const handleOpenRecentEdit = async (recent: RecentEditRecord) => {
+    setIsLoadingFile(true);
+    try {
+      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => resolve(image);
+        image.onerror = reject;
+        image.src = recent.imageDataUrl;
+      });
+
+      const session: PictureSession = {
+        id: recent.id,
+        name: recent.name,
+        sourceImage: img,
+        imageDataUrl: recent.imageDataUrl,
+        thumbnailUrl: recent.thumbnailDataUrl,
+        state: recent.imageState || DEFAULT_IMAGE_STATE,
+        info: recent.fileInfo as LoadedFileInfo,
+        isRaw: recent.isRaw || false,
+        appliedLookId: recent.appliedLookId || null,
+        history: [recent.imageState || DEFAULT_IMAGE_STATE],
+        historyIndex: 0
+      };
+
+      setPictures([session]);
+      setActivePictureId(session.id);
+      showToast(`Opened "${recent.name}"`, 'success');
+    } catch (err) {
+      console.error("Failed to open recent edit:", err);
+      showToast("Failed to open recent edit", "error");
+    } finally {
+      setIsLoadingFile(false);
+    }
+  };
+
+  const handleDeleteRecentEdit = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await deleteRecentEdit(id);
+      setRecentEdits(prev => prev.filter(r => r.id !== id));
+      showToast("Removed from recent edits", "info");
+    } catch (err) {
+      console.error("Failed to delete recent edit:", err);
+    }
+  };
+
+  const handleClearAllRecents = async () => {
+    try {
+      await clearAllRecentEdits();
+      setRecentEdits([]);
+      showToast("Cleared all recent edits", "info");
+    } catch (err) {
+      console.error("Failed to clear recents:", err);
+    }
+  };
+
+  const handleClosePicture = (idToClose: string) => {
+    setPictures(prev => {
+      const nextList = prev.filter(p => p.id !== idToClose);
+      if (nextList.length === 0) {
+        setActivePictureId(null);
+      } else if (activePictureId === idToClose) {
+        setActivePictureId(nextList[0].id);
+      }
+      return nextList;
+    });
+  };
+
+  const handleApplyToAll = () => {
+    if (!activePicture || pictures.length <= 1) return;
+    const sourceState = activePicture.state;
+    const lookId = activePicture.appliedLookId;
+
+    setPictures(prev => prev.map(p => {
+      if (p.id === activePicture.id) return p;
+      return {
+        ...p,
+        state: {
+          ...sourceState,
+          crop: p.state.crop,
+          masks: p.state.masks
+        },
+        appliedLookId: lookId
+      };
+    }));
+
+    showToast(`Applied edits to all ${pictures.length} photos!`, 'success');
+  };
+
+  const handleExportAll = async () => {
+    if (pictures.length === 0) return;
+    setIsExportingBatch(true);
+    showToast(`Exporting ${pictures.length} photos...`, 'info');
+
+    try {
+      for (let i = 0; i < pictures.length; i++) {
+        const pic = pictures[i];
+        const url = await generateResultUrl(pic.sourceImage, pic.state, exportFormat, exportQuality);
+        if (url) {
+          const a = document.createElement('a');
+          const ext = exportFormat === 'png' ? 'png' : 'jpg';
+          const baseName = pic.name.replace(/\.[^/.]+$/, "");
+          a.download = `${baseName}_edited.${ext}`;
+          a.href = url;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          await new Promise(r => setTimeout(r, 400));
+        }
+      }
+      showToast(`Successfully exported ${pictures.length} photos!`, 'success');
+    } catch (err) {
+      console.error("Batch export error:", err);
+      showToast("Error during batch export", "error");
+    } finally {
+      setIsExportingBatch(false);
+    }
+  };
+
+  const handleResetAll = () => {
+    setPictures(prev => prev.map(p => ({
+      ...p,
+      state: DEFAULT_IMAGE_STATE,
+      appliedLookId: null
+    })));
+    showToast("Reset all open photos to original", "info");
+  };
+
   const loadDriveFile = async (fileId: string, filename: string) => {
     if (!googleAccessToken) return;
     setIsLoadingFile(true);
@@ -524,41 +847,36 @@ const App: React.FC = () => {
       const isRawFile = lowerName.endsWith('.dng') || lowerName.endsWith('.cr2') || lowerName.endsWith('.nef') || lowerName.endsWith('.arw');
       
       let img: HTMLImageElement;
+      let dataUrl = '';
+
       if (isRawFile) {
-        setIsRaw(true);
         img = await loadRawImage(file);
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.min(1920, img.naturalWidth || 1920);
+        canvas.height = Math.min(1080, img.naturalHeight || 1080);
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+        }
       } else {
-        setIsRaw(false);
-        img = await new Promise((resolve, reject) => {
+        dataUrl = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader();
-          reader.onload = (ev) => {
-            const i = new Image();
-            i.onload = () => resolve(i);
-            i.onerror = reject;
-            i.src = ev.target?.result as string;
-          };
+          reader.onload = (ev) => resolve(ev.target?.result as string);
+          reader.onerror = reject;
           reader.readAsDataURL(file);
         });
-      }
-
-      setSourceImage(img);
-      setImageState(DEFAULT_IMAGE_STATE);
-      setActiveMaskId(null);
-
-      try {
-        const metadata = await parseFileMetadata(file, img.naturalWidth || img.width || 1920, img.naturalHeight || img.height || 1080);
-        setLoadedFileInfo(metadata);
-      } catch (exifErr) {
-        console.warn("Error parsing Google Drive EXIF:", exifErr);
-        setLoadedFileInfo({
-          name: filename,
-          size: file.size,
-          type: file.type || 'image/jpeg',
-          width: img.naturalWidth || img.width || 1920,
-          height: img.naturalHeight || img.height || 1080,
-          exif: generateRealisticExif(filename, img.naturalWidth || img.width || 1920, img.naturalHeight || img.height || 1080)
+        img = await new Promise<HTMLImageElement>((resolve, reject) => {
+          const image = new Image();
+          image.onload = () => resolve(image);
+          image.onerror = reject;
+          image.src = dataUrl;
         });
       }
+
+      const session = await createPictureSession(file, img, dataUrl, isRawFile);
+      setPictures(prev => [...prev, session]);
+      setActivePictureId(session.id);
     } catch (err: any) {
       console.error(err);
       alert("Error loading photo from Google Drive: " + err.message);
@@ -567,13 +885,12 @@ const App: React.FC = () => {
     }
   };
 
-  const createProceduralSampleImage = (): HTMLImageElement => {
+  const createProceduralSampleImage = (): { img: HTMLImageElement; dataUrl: string } => {
     const canvas = document.createElement('canvas');
     canvas.width = 1920;
     canvas.height = 1280;
     const ctx = canvas.getContext('2d');
     if (ctx) {
-      // Gradient sky (deep evening to orange warm horizon)
       const skyGrad = ctx.createLinearGradient(0, 0, 0, 1280);
       skyGrad.addColorStop(0, '#0f172a');
       skyGrad.addColorStop(0.3, '#1e1b4b');
@@ -583,7 +900,6 @@ const App: React.FC = () => {
       ctx.fillStyle = skyGrad;
       ctx.fillRect(0, 0, 1920, 1280);
 
-      // Glowing Sun/Sunset
       ctx.shadowColor = '#f59e0b';
       ctx.shadowBlur = 150;
       ctx.beginPath();
@@ -592,7 +908,6 @@ const App: React.FC = () => {
       ctx.fill();
       ctx.shadowBlur = 0;
 
-      // Far mountain range
       ctx.beginPath();
       ctx.moveTo(0, 1280);
       for (let x = 0; x <= 1920; x += 10) {
@@ -603,7 +918,6 @@ const App: React.FC = () => {
       ctx.fillStyle = '#4a044e';
       ctx.fill();
 
-      // Mid mountain range
       ctx.beginPath();
       ctx.moveTo(0, 1280);
       for (let x = 0; x <= 1920; x += 10) {
@@ -614,7 +928,6 @@ const App: React.FC = () => {
       ctx.fillStyle = '#310a5d';
       ctx.fill();
 
-      // Foreground Hills
       ctx.beginPath();
       ctx.moveTo(0, 1280);
       for (let x = 0; x <= 1920; x += 10) {
@@ -625,7 +938,6 @@ const App: React.FC = () => {
       ctx.fillStyle = '#111827';
       ctx.fill();
 
-      // Lake reflection area
       const waterGrad = ctx.createLinearGradient(0, 1000, 0, 1280);
       waterGrad.addColorStop(0, '#111827');
       waterGrad.addColorStop(0.1, '#1e1b4b');
@@ -633,7 +945,6 @@ const App: React.FC = () => {
       ctx.fillStyle = waterGrad;
       ctx.fillRect(0, 1000, 1920, 280);
 
-      // Specular pathway
       const sunReflection = ctx.createLinearGradient(820, 0, 1100, 0);
       sunReflection.addColorStop(0, 'rgba(249, 115, 22, 0)');
       sunReflection.addColorStop(0.5, 'rgba(253, 224, 71, 0.45)');
@@ -641,7 +952,6 @@ const App: React.FC = () => {
       ctx.fillStyle = sunReflection;
       ctx.fillRect(820, 1000, 280, 280);
 
-      // Simple reflection water lines
       ctx.strokeStyle = 'rgba(253, 224, 71, 0.2)';
       ctx.lineWidth = 1.5;
       for (let rLine = 1010; rLine < 1260; rLine += 20) {
@@ -652,9 +962,10 @@ const App: React.FC = () => {
         ctx.stroke();
       }
     }
+    const dataUrl = canvas.toDataURL('image/png');
     const img = new Image();
-    img.src = canvas.toDataURL('image/png');
-    return img;
+    img.src = dataUrl;
+    return { img, dataUrl };
   };
 
   const loadSampleImage = () => {
@@ -663,58 +974,91 @@ const App: React.FC = () => {
     img.crossOrigin = 'Anonymous';
     img.src = 'https://picsum.photos/1920/1280';
     img.onload = () => {
-      setSourceImage(img);
-      setIsRaw(false);
-      setImageState(DEFAULT_IMAGE_STATE);
-      setActiveMaskId(null);
-      setIsLoadingFile(false);
-      setLoadedFileInfo({
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth || 1920;
+      canvas.height = img.naturalHeight || 1280;
+      const ctx = canvas.getContext('2d');
+      let dataUrl = '';
+      if (ctx) {
+        ctx.drawImage(img, 0, 0);
+        dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+      }
+
+      const id = 'pic_sample_' + Date.now();
+      const session: PictureSession = {
+        id,
         name: "unreal-epic-sunset-sample.jpg",
-        size: 1920 * 1280 * 3 * 0.15, // estimated JPEG size
-        type: "image/jpeg",
-        width: 1920,
-        height: 1280,
-        exif: {
-          make: "Fujifilm",
-          model: "X-T5",
-          lens: "XF 16-55mm F2.8 R LM WR",
-          focalLength: "23mm",
-          aperture: "f/5.6",
-          shutterSpeed: "1/320s",
-          iso: "160",
-          dateTime: "2026-06-05 10:04:58",
-          software: "Snapseed for Web"
-        }
-      });
+        sourceImage: img,
+        imageDataUrl: dataUrl || img.src,
+        thumbnailUrl: generateThumbnail(img),
+        state: DEFAULT_IMAGE_STATE,
+        info: {
+          name: "unreal-epic-sunset-sample.jpg",
+          size: 1920 * 1280 * 3 * 0.15,
+          type: "image/jpeg",
+          width: 1920,
+          height: 1280,
+          exif: {
+            make: "Fujifilm",
+            model: "X-T5",
+            lens: "XF 16-55mm F2.8 R LM WR",
+            focalLength: "23mm",
+            aperture: "f/5.6",
+            shutterSpeed: "1/320s",
+            iso: "160",
+            dateTime: "2026-06-05 10:04:58",
+            software: "Snapseed for Web"
+          }
+        },
+        isRaw: false,
+        appliedLookId: null,
+        history: [DEFAULT_IMAGE_STATE],
+        historyIndex: 0
+      };
+
+      setPictures(prev => [...prev, session]);
+      setActivePictureId(session.id);
+      setIsLoadingFile(false);
     };
     img.onerror = () => {
-      console.log("No internet context: rendering gorgeous on-device procedural landscape sunset");
       try {
-        const fallImg = createProceduralSampleImage();
+        const { img: fallImg, dataUrl } = createProceduralSampleImage();
         fallImg.onload = () => {
-          setSourceImage(fallImg);
-          setIsRaw(false);
-          setImageState(DEFAULT_IMAGE_STATE);
-          setActiveMaskId(null);
-          setIsLoadingFile(false);
-          setLoadedFileInfo({
+          const id = 'pic_procedural_' + Date.now();
+          const session: PictureSession = {
+            id,
             name: "procedural-sunset-render.png",
-            size: 1920 * 1080 * 4 * 0.2, // estimated PNG size
-            type: "image/png",
-            width: 1920,
-            height: 1080,
-            exif: {
-              make: "Hasselblad",
-              model: "X2D 100C",
-              lens: "XCD 38mm F2.5",
-              focalLength: "38mm",
-              aperture: "f/2.8",
-              shutterSpeed: "1/60s",
-              iso: "64",
-              dateTime: "2026-06-05 10:04:58",
-              software: "Snapseed for Web"
-            }
-          });
+            sourceImage: fallImg,
+            imageDataUrl: dataUrl,
+            thumbnailUrl: generateThumbnail(fallImg),
+            state: DEFAULT_IMAGE_STATE,
+            info: {
+              name: "procedural-sunset-render.png",
+              size: 1920 * 1080 * 4 * 0.2,
+              type: "image/png",
+              width: 1920,
+              height: 1080,
+              exif: {
+                make: "Hasselblad",
+                model: "X2D 100C",
+                lens: "XCD 38mm F2.5",
+                focalLength: "38mm",
+                aperture: "f/2.8",
+                shutterSpeed: "1/60s",
+                iso: "64",
+                dateTime: "2026-06-05 10:04:58",
+                software: "Snapseed for Web"
+              }
+            },
+            isRaw: false,
+            appliedLookId: null,
+            history: [DEFAULT_IMAGE_STATE],
+            historyIndex: 0
+          };
+
+          setPictures(prev => [...prev, session]);
+          setActivePictureId(session.id);
+          setIsLoadingFile(false);
         };
       } catch (err) {
         setIsLoadingFile(false);
@@ -736,57 +1080,8 @@ const App: React.FC = () => {
   const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     setIsDraggingOver(false);
-    
-    const file = e.dataTransfer.files?.[0];
-    if (!file) return;
-
-    const fileName = file.name.toLowerCase();
-    const isRawFile = fileName.endsWith('.dng') || fileName.endsWith('.cr2') || fileName.endsWith('.nef') || fileName.endsWith('.arw');
-
-    setIsLoadingFile(true);
-
-    try {
-      let img: HTMLImageElement;
-      if (isRawFile) {
-        setIsRaw(true);
-        img = await loadRawImage(file);
-      } else {
-        setIsRaw(false);
-        img = await new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = (ev) => {
-            const i = new Image();
-            i.onload = () => resolve(i);
-            i.onerror = reject;
-            i.src = ev.target?.result as string;
-          };
-          reader.readAsDataURL(file);
-        });
-      }
-
-      setSourceImage(img);
-      setImageState(DEFAULT_IMAGE_STATE);
-      setActiveMaskId(null);
-
-      try {
-        const metadata = await parseFileMetadata(file, img.naturalWidth || img.width || 1920, img.naturalHeight || img.height || 1080);
-        setLoadedFileInfo(metadata);
-      } catch (exifErr) {
-        console.warn("Error parsing dropped EXIF:", exifErr);
-        setLoadedFileInfo({
-          name: file.name,
-          size: file.size,
-          type: file.type || 'image/jpeg',
-          width: img.naturalWidth || img.width || 1920,
-          height: img.naturalHeight || img.height || 1080,
-          exif: generateRealisticExif(file.name, img.naturalWidth || img.width || 1920, img.naturalHeight || img.height || 1080)
-        });
-      }
-    } catch (err) {
-      console.error("Failed to load dropped image", err);
-      alert("Could not load file. If this is a RAW file, the format may not be supported yet.");
-    } finally {
-      setIsLoadingFile(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      loadFiles(e.dataTransfer.files);
     }
   };
 
@@ -967,60 +1262,13 @@ const App: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [imageState, sourceImage, isComparing, isCropMode, updatePreview]);
 
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const fileName = file.name.toLowerCase();
-    const isRawFile = fileName.endsWith('.dng') || fileName.endsWith('.cr2') || fileName.endsWith('.nef') || fileName.endsWith('.arw');
-
-    setIsLoadingFile(true);
-
-    try {
-      let img: HTMLImageElement;
-      
-      if (isRawFile) {
-        setIsRaw(true);
-        img = await loadRawImage(file);
-      } else {
-        setIsRaw(false);
-        img = await new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = (ev) => {
-            const i = new Image();
-            i.onload = () => resolve(i);
-            i.onerror = reject;
-            i.src = ev.target?.result as string;
-          };
-          reader.readAsDataURL(file);
-        });
-      }
-
-      setSourceImage(img);
-      setImageState(DEFAULT_IMAGE_STATE);
-      setActiveMaskId(null);
-
-      try {
-        const metadata = await parseFileMetadata(file, img.naturalWidth || img.width || 1920, img.naturalHeight || img.height || 1080);
-        setLoadedFileInfo(metadata);
-      } catch (exifErr) {
-        console.warn("Error parsing uploaded EXIF:", exifErr);
-        setLoadedFileInfo({
-          name: file.name,
-          size: file.size,
-          type: file.type || 'image/jpeg',
-          width: img.naturalWidth || img.width || 1920,
-          height: img.naturalHeight || img.height || 1080,
-          exif: generateRealisticExif(file.name, img.naturalWidth || img.width || 1920, img.naturalHeight || img.height || 1080)
-        });
-      }
-    } catch (err) {
-      console.error("Failed to load image", err);
-      alert("Could not load file. If this is a RAW file, the format may not be supported yet.");
-    } finally {
-      setIsLoadingFile(false);
+  const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      loadFiles(e.target.files);
+      e.target.value = '';
     }
   };
+
 
   const handleDownload = async (format: 'jpeg' | 'png' = exportFormat, quality: number = exportQuality) => {
     if (!sourceImage) return;
@@ -1731,6 +1979,7 @@ const App: React.FC = () => {
                   ref={fileInputRef} 
                   type="file" 
                   accept="image/*,.dng,.cr2,.nef,.arw" 
+                  multiple
                   className="hidden" 
                   onChange={handleUpload} 
                 />
@@ -1932,6 +2181,83 @@ const App: React.FC = () => {
 
           </div>
 
+          {/* Locally Saved Recent Edits Section */}
+          {recentEdits.length > 0 && (
+            <motion.div variants={homepageItemVariants} className="mt-4">
+              <div className="flex items-center justify-between mb-4 border-b border-neutral-900 pb-3">
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-cyan-400" />
+                  <h2 className="text-xs font-black uppercase tracking-widest text-neutral-200">
+                    Recent Edits
+                  </h2>
+                  <span className="text-[10px] font-mono font-bold bg-neutral-900 border border-neutral-800 text-neutral-400 px-2 py-0.5 rounded-full">
+                    {recentEdits.length}
+                  </span>
+                </div>
+                <button
+                  onClick={handleClearAllRecents}
+                  className="text-[10px] font-bold uppercase tracking-wider text-neutral-500 hover:text-red-400 transition-colors flex items-center gap-1 cursor-pointer"
+                >
+                  <Trash2 className="w-3 h-3" />
+                  <span>Clear History</span>
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                {recentEdits.map((recent) => (
+                  <div
+                    key={recent.id}
+                    onClick={() => handleOpenRecentEdit(recent)}
+                    className="group relative bg-neutral-950/60 hover:bg-neutral-900/80 border border-neutral-850 hover:border-neutral-700 rounded-xl overflow-hidden p-2.5 transition-all duration-200 cursor-pointer flex flex-col text-left shadow-lg hover:shadow-cyan-950/20"
+                  >
+                    <div className="relative aspect-[4/3] bg-neutral-900 rounded-lg overflow-hidden shrink-0 flex items-center justify-center">
+                      {recent.thumbnailDataUrl ? (
+                        <img
+                          src={recent.thumbnailDataUrl}
+                          alt={recent.name}
+                          className="w-full h-full object-cover transition duration-300 group-hover:scale-105"
+                        />
+                      ) : (
+                        <div className="w-full h-full bg-neutral-900 flex items-center justify-center text-neutral-600 font-mono text-xs">
+                          NO PREVIEW
+                        </div>
+                      )}
+
+                      {recent.isRaw && (
+                        <span className="absolute top-1.5 left-1.5 text-[8px] font-bold uppercase tracking-wider bg-amber-500/90 text-black px-1.5 py-0.5 rounded shadow">
+                          RAW
+                        </span>
+                      )}
+
+                      <button
+                        onClick={(e) => handleDeleteRecentEdit(recent.id, e)}
+                        className="absolute top-1.5 right-1.5 p-1 rounded bg-black/60 hover:bg-red-900/80 text-neutral-400 hover:text-white opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
+                        title="Delete from recents"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+
+                      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-1.5 flex justify-between items-end text-[8px] font-mono text-neutral-300">
+                        <span>{recent.fileInfo?.width || 0}×{recent.fileInfo?.height || 0}</span>
+                        <span>{recent.mimeType?.split('/')[1]?.toUpperCase() || 'IMG'}</span>
+                      </div>
+                    </div>
+
+                    <div className="mt-2 flex flex-col leading-tight">
+                      <span className="text-[11px] font-bold text-neutral-200 group-hover:text-white truncate">
+                        {recent.name}
+                      </span>
+                      <span className="text-[9px] text-neutral-500 mt-1 flex items-center gap-1 font-mono">
+                        <Clock className="w-2.5 h-2.5" />
+                        {new Date(recent.lastModified).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          )}
+
         </motion.main>
 
         {/* Global Loading Overlay */}
@@ -1998,6 +2324,7 @@ const App: React.FC = () => {
                   ref={fileInputRef} 
                   type="file" 
                   accept="image/*,.dng,.cr2,.nef,.arw" 
+                  multiple
                   className="hidden" 
                   onChange={handleUpload} 
                 />
@@ -2106,6 +2433,19 @@ const App: React.FC = () => {
               </button>
         </div>
       </header>
+
+      {/* Multi-Picture Tabs Bar */}
+      <PictureTabs
+        pictures={pictures}
+        activePictureId={activePictureId || (pictures[0]?.id ?? '')}
+        onSelectPicture={(id) => setActivePictureId(id)}
+        onClosePicture={handleClosePicture}
+        onAddPictures={(files) => loadFiles(files)}
+        onApplyToAll={handleApplyToAll}
+        onExportAll={handleExportAll}
+        onResetAll={handleResetAll}
+        isExportingBatch={isExportingBatch}
+      />
 
       {/* Main Workspace */}
       <div className={`flex-1 flex flex-col ${sidebarPosition === 'left' ? 'md:flex-row-reverse' : 'md:flex-row'} overflow-hidden`}>
@@ -4003,10 +4343,10 @@ const App: React.FC = () => {
               
               <div className="p-5 space-y-2">
                 <p className="text-[12px] sm:text-[13px] text-neutral-300 leading-relaxed">
-                  Are you sure you want to close this image and return to the homepage?
+                  Are you sure you want to close this workspace session and return to the homepage?
                 </p>
-                <p className="text-[10px] text-neutral-550 leading-relaxed font-medium">
-                  All interactive adjustments, crops, and live masking effects will be lost. This action is irreversible.
+                <p className="text-[10px] text-neutral-500 leading-relaxed font-medium">
+                  Your adjustments are safely auto-saved to Recent Edits on this device.
                 </p>
               </div>
 
@@ -4023,13 +4363,12 @@ const App: React.FC = () => {
                   type="button"
                   onClick={() => {
                     setShowCloseConfirm(false);
-                    setSourceImage(null);
-                    setImageState(DEFAULT_IMAGE_STATE);
-                    setActiveMaskId(null);
+                    setPictures([]);
+                    setActivePictureId(null);
                   }}
                   className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-[11px] font-bold uppercase tracking-wider transition-colors cursor-pointer"
                 >
-                  Close Image
+                  Close Workspace
                 </button>
               </div>
             </motion.div>

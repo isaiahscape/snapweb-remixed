@@ -531,3 +531,41 @@ export const LOOKS_PRESETS: LookPreset[] = [
     }
   }
 ];
+
+export interface ExifData {
+  make?: string;
+  model?: string;
+  lens?: string;
+  focalLength?: string;
+  aperture?: string;
+  shutterSpeed?: string;
+  iso?: string;
+  dateTime?: string;
+  software?: string;
+  latitude?: string;
+  longitude?: string;
+}
+
+export interface LoadedFileInfo {
+  name: string;
+  size: number;
+  type: string;
+  width: number;
+  height: number;
+  lastModified?: string;
+  exif?: ExifData;
+}
+
+export interface PictureSession {
+  id: string;
+  name: string;
+  sourceImage: HTMLImageElement;
+  imageDataUrl: string;
+  thumbnailUrl: string;
+  state: ImageState;
+  info: LoadedFileInfo;
+  isRaw: boolean;
+  appliedLookId: string | null;
+  history: ImageState[];
+  historyIndex: number;
+}
