@@ -16,7 +16,14 @@ import {
   CustomPreset,
   OverlayItem
 } from './types';
-import { processImage, generateResultUrl, loadRawImage, getClosestColorChannel } from './services/imageProcessor';
+import { 
+  processImage, 
+  generateResultUrl, 
+  loadRawImage, 
+  getClosestColorChannel,
+  sampleNeutralWhiteBalance,
+  CAMERA_PROFILES 
+} from './services/imageProcessor';
 import Histogram from './components/Histogram';
 import { CurvesEditor } from './components/CurvesEditor';
 import { Slider, ToolButton, IconButton } from './components/Controls';
@@ -42,7 +49,7 @@ import {
   RotateCw, RotateCcw, FlipHorizontal, FlipVertical, Loader2, FolderOpen, Cloud, LogOut, 
   RefreshCw, Globe, Settings2, ArrowLeft, AlertCircle, ZoomIn, ZoomOut, Maximize2, 
   Upload as LucideUpload, X, Share2, Copy, Check, Mail, Link, Clock, Trash2, Layers,
-  Bookmark, Sparkles, Plus, Stamp, Download, Upload
+  Bookmark, Sparkles, Plus, Stamp, Download, Upload, Pipette
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ExifReader from 'exifreader';
@@ -511,6 +518,8 @@ const App: React.FC = () => {
   // Color Mixer State
   const [activeColorChannel, setActiveColorChannel] = useState<ColorChannel>('red');
   const [isColorPickerActive, setIsColorPickerActive] = useState(false);
+  const [isWBPickerActive, setIsWBPickerActive] = useState(false);
+  const [isDevelopLinearActive, setIsDevelopLinearActive] = useState(false);
   
   // Modes
   const [isCropMode, setIsCropMode] = useState(false);
@@ -1460,11 +1469,16 @@ const App: React.FC = () => {
     setImageState(prev => ({
       ...prev,
       // Reset styling adjustments back to default before applying
+      rawKelvin: DEFAULT_IMAGE_STATE.rawKelvin,
       rawTemperature: DEFAULT_IMAGE_STATE.rawTemperature,
       rawTint: DEFAULT_IMAGE_STATE.rawTint,
       rawExposureEV: DEFAULT_IMAGE_STATE.rawExposureEV,
       rawHighlights: DEFAULT_IMAGE_STATE.rawHighlights,
       rawShadows: DEFAULT_IMAGE_STATE.rawShadows,
+      rawWhites: DEFAULT_IMAGE_STATE.rawWhites,
+      rawBlacks: DEFAULT_IMAGE_STATE.rawBlacks,
+      rawClarity: DEFAULT_IMAGE_STATE.rawClarity,
+      rawDenoise: DEFAULT_IMAGE_STATE.rawDenoise,
       rawProfile: DEFAULT_IMAGE_STATE.rawProfile,
       
       brightness: DEFAULT_IMAGE_STATE.brightness,
@@ -1508,11 +1522,16 @@ const App: React.FC = () => {
     if (!sourceImage) return;
     
     const stylingSettings: Partial<ImageState> = {
+      rawKelvin: imageState.rawKelvin,
       rawTemperature: imageState.rawTemperature,
       rawTint: imageState.rawTint,
       rawExposureEV: imageState.rawExposureEV,
       rawHighlights: imageState.rawHighlights,
       rawShadows: imageState.rawShadows,
+      rawWhites: imageState.rawWhites,
+      rawBlacks: imageState.rawBlacks,
+      rawClarity: imageState.rawClarity,
+      rawDenoise: imageState.rawDenoise,
       rawProfile: imageState.rawProfile,
       brightness: imageState.brightness,
       contrast: imageState.contrast,
@@ -1568,7 +1587,8 @@ const App: React.FC = () => {
     }
 
     const validKeys: (keyof ImageState)[] = [
-      'rawTemperature', 'rawTint', 'rawExposureEV', 'rawHighlights', 'rawShadows', 'rawProfile',
+      'rawKelvin', 'rawTemperature', 'rawTint', 'rawExposureEV', 'rawHighlights', 'rawShadows',
+      'rawWhites', 'rawBlacks', 'rawClarity', 'rawDenoise', 'rawProfile',
       'brightness', 'contrast', 'saturation', 'ambiance', 'warmth', 'tint', 'highlights', 'shadows',
       'structure', 'sharpening', 'dehaze', 'grain', 'vignette', 'colorGrade'
     ];
@@ -1785,6 +1805,35 @@ const App: React.FC = () => {
 
              lastPaintPos.current = { x: finalX, y: finalY };
              paintStroke(finalX, finalY);
+        }
+        return;
+    }
+
+    // 0.2 White Balance Neutral Gray Eyedropper
+    if (isWBPickerActive && canvasRef.current) {
+        const rect = canvasRef.current.getBoundingClientRect();
+        if (
+            e.clientX >= rect.left && 
+            e.clientX <= rect.right && 
+            e.clientY >= rect.top && 
+            e.clientY <= rect.bottom
+        ) {
+            const scaleX = canvasRef.current.width / rect.width;
+            const scaleY = canvasRef.current.height / rect.height;
+            const x = Math.round((e.clientX - rect.left) * scaleX);
+            const y = Math.round((e.clientY - rect.top) * scaleY);
+            const ctx = canvasRef.current.getContext('2d');
+            if (ctx) {
+                const imgData = ctx.getImageData(0, 0, canvasRef.current.width, canvasRef.current.height);
+                const { kelvin, tint } = sampleNeutralWhiteBalance(imgData, x, y, 4);
+                setImageState(prev => ({
+                    ...prev,
+                    rawKelvin: kelvin,
+                    rawTint: tint
+                }));
+                setIsWBPickerActive(false);
+                showToast(`Auto White Balance: ${kelvin}K, Tint ${tint > 0 ? '+' : ''}${tint}`, "success");
+            }
         }
         return;
     }
@@ -2608,8 +2657,8 @@ const App: React.FC = () => {
                 ref={containerRef}
                 className={`relative inline-block shadow-2xl shadow-black/50 
                     ${activeMaskId ? 'cursor-crosshair' : ''}
-                    ${!activeMaskId && (isStraightenToolActive || isColorPickerActive) ? 'cursor-crosshair' : ''}
-                    ${!activeMaskId && zoom > 1 && !isStraightenToolActive && !isColorPickerActive ? (isPanning ? 'cursor-grabbing' : 'cursor-grab') : ''}
+                    ${!activeMaskId && (isStraightenToolActive || isColorPickerActive || isWBPickerActive) ? 'cursor-crosshair' : ''}
+                    ${!activeMaskId && zoom > 1 && !isStraightenToolActive && !isColorPickerActive && !isWBPickerActive ? (isPanning ? 'cursor-grabbing' : 'cursor-grab') : ''}
                 `}
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
@@ -3073,109 +3122,145 @@ const App: React.FC = () => {
 
                 {activePanelTab === 'tune' && (
                     <>
-                        {/* CAMERA RAW DEVELOPER SECTION */}
-                        <SidebarSection title="RAW Options" defaultOpen={isRaw}>
-                    {isRaw ? (
+                        {/* TRUE LINEAR RAW DEVELOPER SECTION */}
+                        <SidebarSection title="RAW & Linear HDR Suite" defaultOpen={isRaw || isDevelopLinearActive}>
                         <div className="space-y-4">
-                            <div className="bg-amber-500/10 border border-amber-500/20 rounded p-2.5 text-center">
-                                <span className="inline-flex items-center gap-1.5 text-[9px] font-bold text-amber-500 uppercase tracking-widest leading-none">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-                                    12-Bit Camera Sensor Active
-                                </span>
-                                <p className="text-[9px] text-neutral-400 mt-1 leading-relaxed">
-                                    Adjusting non-destructive Bayer filter metadata values directly on sensor matrix.
+                            <div className={`border rounded-lg p-3 ${isRaw ? 'bg-amber-500/10 border-amber-500/30' : 'bg-cyan-500/10 border-cyan-500/30'}`}>
+                                <div className="flex items-center justify-between">
+                                    <span className={`inline-flex items-center gap-1.5 text-[9.5px] font-bold uppercase tracking-wider leading-none ${isRaw ? 'text-amber-400' : 'text-cyan-400'}`}>
+                                        <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${isRaw ? 'bg-amber-400' : 'bg-cyan-400'}`} />
+                                        {isRaw ? '12-Bit Camera Sensor Active' : '32-Bit Linear Float Engine'}
+                                    </span>
+                                    <span className="text-[8.5px] font-mono uppercase bg-neutral-900/80 px-1.5 py-0.5 rounded text-neutral-400 border border-neutral-800">
+                                        ACES Filmic HDR
+                                    </span>
+                                </div>
+                                <p className="text-[9px] text-neutral-400 mt-1.5 leading-relaxed">
+                                    {isRaw 
+                                      ? 'Processing non-destructive linear sensor RGB with Planckian blackbody chromatic adaptation and camera matrix calibration.'
+                                      : 'Scene-referred floating-point exposure, Planckian Kelvin white balance, and highlight shoulder reconstruction.'
+                                    }
                                 </p>
                             </div>
 
-                            {/* Camera Profile */}
-                            <div className="py-2 space-y-3">
-                                <div>
-                                    <label className="text-[9px] font-bold uppercase tracking-widest text-neutral-400 block mb-1.5 flex justify-between items-center">
-                                        <span>Creative Profile</span>
-                                        {['Standard', 'Vivid', 'Landscape', 'Portrait', 'Monochrome'].includes(imageState.rawProfile) && (
-                                            <span className="text-amber-500 font-mono tracking-normal uppercase bg-amber-500/10 px-1 py-0.5 rounded text-[8px]">{imageState.rawProfile}</span>
-                                        )}
-                                    </label>
-                                    <div className="grid grid-cols-5 gap-1 bg-neutral-900 border border-neutral-800 p-1 rounded">
-                                        {(['Standard', 'Vivid', 'Landscape', 'Portrait', 'Monochrome'] as const).map(prof => (
-                                            <button 
-                                                key={prof}
-                                                onClick={() => updateState('rawProfile', prof)}
-                                                className={`py-1 text-[8px] font-bold uppercase rounded border transition-all ${
-                                                    imageState.rawProfile === prof 
-                                                        ? 'bg-amber-500 border-amber-500 text-black' 
-                                                        : 'bg-transparent border-transparent text-neutral-400 hover:text-white hover:bg-neutral-80/50 cursor-pointer'
-                                                }`}
-                                                title={`${prof} Camera rendering profile`}
-                                            >
-                                                {prof.slice(0, 4)}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-
-                                <div>
-                                    <label className="text-[9px] font-bold uppercase tracking-widest text-neutral-400 block mb-1.5 flex justify-between items-center">
-                                        <span>White Balance Profile</span>
-                                        {['Sunny', 'Cloudy', 'Shade', 'Tungsten', 'Fluorescent', 'Flash'].includes(imageState.rawProfile) && (
-                                            <span className="text-amber-500 font-mono tracking-normal uppercase bg-amber-500/10 px-1 py-0.5 rounded text-[8px]">{imageState.rawProfile}</span>
-                                        )}
-                                    </label>
-                                    <div className="grid grid-cols-3 gap-1 bg-neutral-900 border border-neutral-800 p-1 rounded">
-                                        {(['Sunny', 'Cloudy', 'Shade', 'Tungsten', 'Fluorescent', 'Flash'] as const).map(prof => (
-                                            <button 
-                                                key={prof}
-                                                onClick={() => updateState('rawProfile', prof)}
-                                                className={`py-1.5 text-[8.5px] font-bold uppercase rounded border transition-all ${
-                                                    imageState.rawProfile === prof 
-                                                        ? 'bg-amber-500 border-amber-500 text-black' 
-                                                        : 'bg-transparent border-transparent text-neutral-400 hover:text-white hover:bg-neutral-800/50 cursor-pointer'
-                                                }`}
-                                                title={`${prof} White Balance profile`}
-                                            >
-                                                {prof}
-                                            </button>
-                                        ))}
-                                    </div>
+                            {/* Camera Sensor Matrix Profile */}
+                            <div className="py-1 space-y-2">
+                                <label className="text-[9px] font-bold uppercase tracking-widest text-neutral-400 block flex justify-between items-center">
+                                    <span>Camera Sensor Profile</span>
+                                    <span className="text-amber-400 font-mono uppercase bg-neutral-900 border border-neutral-800 px-1.5 py-0.5 rounded text-[8px]">{imageState.rawProfile}</span>
+                                </label>
+                                <div className="grid grid-cols-4 gap-1 bg-neutral-900 border border-neutral-800 p-1 rounded-lg">
+                                    {(['Standard', 'Neutral', 'Vivid', 'Landscape', 'Portrait', 'Monochrome', 'Classic Chrome', 'Velvia'] as const).map(prof => (
+                                        <button 
+                                            key={prof}
+                                            onClick={() => updateState('rawProfile', prof)}
+                                            className={`py-1.5 text-[8px] font-bold uppercase rounded border transition-all cursor-pointer ${
+                                                imageState.rawProfile === prof 
+                                                    ? 'bg-amber-500 border-amber-500 text-black font-extrabold shadow-sm' 
+                                                    : 'bg-transparent border-transparent text-neutral-400 hover:text-white hover:bg-neutral-800/60'
+                                            }`}
+                                            title={`${prof} sensor profile`}
+                                        >
+                                            {prof === 'Classic Chrome' ? 'Chrome' : prof.slice(0, 7)}
+                                        </button>
+                                    ))}
                                 </div>
                             </div>
 
-                            {/* Exposure Baseline EV */}
+                            {/* Planckian Kelvin White Balance */}
+                            <div className="bg-neutral-950/60 border border-neutral-850 rounded-lg p-3 space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-[9.5px] font-bold uppercase tracking-wider text-neutral-300">
+                                        Planckian White Balance
+                                    </span>
+                                    <button
+                                        onClick={() => {
+                                            setIsWBPickerActive(prev => {
+                                                const next = !prev;
+                                                if (next) showToast("Click neutral gray / white in photo to calibrate WB", "info");
+                                                return next;
+                                            });
+                                        }}
+                                        className={`flex items-center gap-1 text-[8.5px] font-bold uppercase px-2 py-1 rounded border transition-all cursor-pointer ${
+                                            isWBPickerActive 
+                                                ? 'bg-cyan-500 border-cyan-400 text-black shadow-md animate-pulse' 
+                                                : 'bg-neutral-900 border-neutral-800 text-neutral-300 hover:text-white hover:border-neutral-700'
+                                        }`}
+                                        title="Pick neutral gray point on photo"
+                                    >
+                                        <Pipette className="w-3 h-3" />
+                                        <span>{isWBPickerActive ? 'Picking...' : 'Eyedropper'}</span>
+                                    </button>
+                                </div>
+
+                                {/* Quick Lighting Presets */}
+                                <div className="grid grid-cols-3 gap-1">
+                                    {[
+                                      { name: 'Daylight', k: 5500, t: 0 },
+                                      { name: 'Cloudy', k: 6500, t: 4 },
+                                      { name: 'Shade', k: 7500, t: 8 },
+                                      { name: 'Tungsten', k: 3200, t: -6 },
+                                      { name: 'Fluorescent', k: 4000, t: 14 },
+                                      { name: 'Flash', k: 5600, t: 2 }
+                                    ].map(wb => (
+                                        <button
+                                            key={wb.name}
+                                            onClick={() => {
+                                                setImageState(prev => ({
+                                                    ...prev,
+                                                    rawKelvin: wb.k,
+                                                    rawTint: wb.t
+                                                }));
+                                                showToast(`WB preset: ${wb.name} (${wb.k}K)`, "info");
+                                            }}
+                                            className={`py-1 text-[8px] font-bold uppercase rounded border transition-all cursor-pointer ${
+                                                (imageState.rawKelvin || 5500) === wb.k 
+                                                    ? 'bg-neutral-200 border-white text-black' 
+                                                    : 'bg-neutral-900/80 border-neutral-800 text-neutral-400 hover:text-white hover:bg-neutral-800'
+                                            }`}
+                                        >
+                                            {wb.name}
+                                        </button>
+                                    ))}
+                                </div>
+
+                                {/* Kelvin Slider */}
+                                <Slider 
+                                    label={`Color Temperature (${imageState.rawKelvin || 5500}K)`} 
+                                    min={2000} 
+                                    max={12000} 
+                                    step={50} 
+                                    value={imageState.rawKelvin || 5500} 
+                                    onChange={(v) => updateState('rawKelvin', v)} 
+                                    onReset={() => updateState('rawKelvin', 5500)} 
+                                />
+
+                                {/* Tint Slider */}
+                                <Slider 
+                                    label="Green / Magenta Tint" 
+                                    min={-100} 
+                                    max={100} 
+                                    step={1} 
+                                    value={imageState.rawTint || 0} 
+                                    onChange={(v) => updateState('rawTint', v)} 
+                                    onReset={() => updateState('rawTint', 0)} 
+                                />
+                            </div>
+
+                            {/* Linear Exposure Baseline EV */}
                             <Slider 
-                                label="Exposure Baseline (EV)" 
-                                min={-3} 
-                                max={3} 
+                                label="Linear Exposure (EV)" 
+                                min={-5} 
+                                max={5} 
                                 step={0.05} 
                                 value={imageState.rawExposureEV} 
                                 onChange={(v) => updateState('rawExposureEV', v)} 
                                 onReset={() => updateState('rawExposureEV', 0)} 
                             />
 
-                            {/* Sensor White Balance Temp */}
+                            {/* Highlight Shoulder Recovery */}
                             <Slider 
-                                label="Sensor Temperature" 
-                                min={-100} 
-                                max={100} 
-                                step={1} 
-                                value={imageState.rawTemperature} 
-                                onChange={(v) => updateState('rawTemperature', v)}  
-                                onReset={() => updateState('rawTemperature', 0)} 
-                            />
-
-                            {/* Sensor Tint */}
-                            <Slider 
-                                label="Sensor Tint" 
-                                min={-100} 
-                                max={100} 
-                                step={1} 
-                                value={imageState.rawTint} 
-                                onChange={(v) => updateState('rawTint', v)} 
-                                onReset={() => updateState('rawTint', 0)} 
-                            />
-
-                            {/* Sensor Highlights Recovery */}
-                            <Slider 
-                                label="Highlights Recovery" 
+                                label="Highlights Shoulder Recovery" 
                                 min={-100} 
                                 max={100} 
                                 step={1} 
@@ -3184,9 +3269,9 @@ const App: React.FC = () => {
                                 onReset={() => updateState('rawHighlights', 0)} 
                             />
 
-                            {/* Sensor Shadows Recovery */}
+                            {/* Shadows Toe Lift */}
                             <Slider 
-                                label="Shadow Detail Lift" 
+                                label="Shadows Toe Lift (Fill Light)" 
                                 min={-100} 
                                 max={100} 
                                 step={1} 
@@ -3194,16 +3279,40 @@ const App: React.FC = () => {
                                 onChange={(v) => updateState('rawShadows', v)} 
                                 onReset={() => updateState('rawShadows', 0)} 
                             />
+
+                            {/* Whites & Blacks */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                <Slider 
+                                    label="Whites Point" 
+                                    min={-100} 
+                                    max={100} 
+                                    step={1} 
+                                    value={imageState.rawWhites || 0} 
+                                    onChange={(v) => updateState('rawWhites', v)} 
+                                    onReset={() => updateState('rawWhites', 0)} 
+                                />
+                                <Slider 
+                                    label="Blacks Point" 
+                                    min={-100} 
+                                    max={100} 
+                                    step={1} 
+                                    value={imageState.rawBlacks || 0} 
+                                    onChange={(v) => updateState('rawBlacks', v)} 
+                                    onReset={() => updateState('rawBlacks', 0)} 
+                                />
+                            </div>
+
+                            {/* Micro-contrast Clarity */}
+                            <Slider 
+                                label="Linear Clarity (Micro-contrast)" 
+                                min={-100} 
+                                max={100} 
+                                step={1} 
+                                value={imageState.rawClarity || 0} 
+                                onChange={(v) => updateState('rawClarity', v)} 
+                                onReset={() => updateState('rawClarity', 0)} 
+                            />
                         </div>
-                    ) : (
-                        <div className="flex flex-col items-center justify-center p-3 text-center border border-dashed border-neutral-850 rounded bg-black/20 my-2">
-                            <span className="text-sm mb-1.5 opacity-80">📷</span>
-                            <span className="text-[10px] font-bold uppercase text-neutral-400 tracking-wider">RAW Developer Locked</span>
-                            <p className="text-[9px] text-neutral-500 mt-1.5 leading-relaxed max-w-[220px]">
-                                Camera RAW developer adjusts native 12-bit sensor data. Load a RAW format (such as .dng, .cr2, .nef, .arw) to unlock non-destructive Bayer development controls.
-                            </p>
-                        </div>
-                    )}
                 </SidebarSection>
             </>
         )}

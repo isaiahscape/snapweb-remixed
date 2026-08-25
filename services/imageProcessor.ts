@@ -116,6 +116,199 @@ export const loadRawImage = async (file: File): Promise<HTMLImageElement> => {
   });
 };
 
+// --- Linear Float RAW Engine Math & LUTs ---
+
+// Standard IEC 61966-2-1 sRGB to Linear conversion
+export const sRGBToLinear = (c: number): number => {
+  const v = c / 255;
+  return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+};
+
+export const linearToSRGB = (v: number): number => {
+  const clamped = Math.max(0, Math.min(1, v));
+  const s = clamped <= 0.0031308 ? 12.92 * clamped : 1.055 * Math.pow(clamped, 1 / 2.4) - 0.055;
+  return Math.round(s * 255);
+};
+
+// Fast Lookup Table for sRGB to Linear Float32
+const SRGB_TO_LINEAR_LUT = new Float32Array(256);
+for (let i = 0; i < 256; i++) {
+  SRGB_TO_LINEAR_LUT[i] = sRGBToLinear(i);
+}
+
+// Narkowicz ACES Filmic Tonemapping (prevents digital highlight blowout in linear HDR)
+export const acesTonemap = (x: number): number => {
+  const a = 2.51, b = 0.03, c = 2.43, d = 0.59, e = 0.14;
+  return Math.max(0, Math.min(1, (x * (a * x + b)) / (x * (c * x + d) + e)));
+};
+
+// Planckian Blackbody Radiation (Kelvin + Tint to Linear RGB Multipliers)
+export const kelvinToRGBFactors = (kelvin: number, tint: number = 0): [number, number, number] => {
+  const temp = Math.max(2000, Math.min(12000, kelvin)) / 100;
+  let r: number, g: number, b: number;
+
+  if (temp <= 66) {
+    r = 255;
+  } else {
+    r = 329.698727446 * Math.pow(temp - 60, -0.1332047592);
+  }
+
+  if (temp <= 66) {
+    g = 99.4708025861 * Math.log(temp) - 161.1195681661;
+  } else {
+    g = 288.1221695283 * Math.pow(temp - 60, -0.0755148492);
+  }
+
+  if (temp >= 66) {
+    b = 255;
+  } else if (temp <= 19) {
+    b = 0;
+  } else {
+    b = 138.5177312231 * Math.log(temp - 10) - 305.0447927307;
+  }
+
+  r = Math.max(0, Math.min(255, r));
+  g = Math.max(0, Math.min(255, g));
+  b = Math.max(0, Math.min(255, b));
+
+  // Reference D55 (5500K daylight) base normalization
+  const baseR = 255, baseG = 240.2, baseB = 224.5;
+  let multR = r / baseR;
+  let multG = g / baseG;
+  let multB = b / baseB;
+
+  if (tint !== 0) {
+    const t = tint / 100;
+    multG *= (1 - t * 0.25);
+    multR *= (1 + t * 0.12);
+    multB *= (1 + t * 0.12);
+  }
+
+  const lum = 0.2126 * multR + 0.7152 * multG + 0.0722 * multB;
+  if (lum > 0.001) {
+    multR /= lum;
+    multG /= lum;
+    multB /= lum;
+  }
+
+  return [multR, multG, multB];
+};
+
+// 3x3 Camera Sensor Matrices
+export const CAMERA_PROFILES: Record<string, number[][]> = {
+  Standard: [
+    [1.0, 0.0, 0.0],
+    [0.0, 1.0, 0.0],
+    [0.0, 0.0, 1.0]
+  ],
+  Neutral: [
+    [0.95, 0.03, 0.02],
+    [0.02, 0.96, 0.02],
+    [0.02, 0.03, 0.95]
+  ],
+  Vivid: [
+    [1.24, -0.16, -0.08],
+    [-0.08, 1.22, -0.14],
+    [-0.04, -0.18, 1.22]
+  ],
+  Landscape: [
+    [1.18, -0.10, -0.08],
+    [-0.12, 1.26, -0.14],
+    [-0.04, -0.16, 1.20]
+  ],
+  Portrait: [
+    [1.12, -0.08, -0.04],
+    [-0.04, 1.08, -0.04],
+    [-0.02, -0.06, 1.08]
+  ],
+  Monochrome: [
+    [0.2126, 0.7152, 0.0722],
+    [0.2126, 0.7152, 0.0722],
+    [0.2126, 0.7152, 0.0722]
+  ],
+  'Classic Chrome': [
+    [1.12, -0.06, -0.06],
+    [-0.08, 1.06, -0.03],
+    [-0.03, -0.14, 1.17]
+  ],
+  Velvia: [
+    [1.34, -0.22, -0.12],
+    [-0.16, 1.38, -0.22],
+    [-0.08, -0.24, 1.32]
+  ],
+  Sunny: [
+    [1.06, 0.0, -0.06],
+    [0.0, 1.0, 0.0],
+    [-0.06, 0.0, 0.94]
+  ],
+  Cloudy: [
+    [1.14, -0.05, -0.09],
+    [0.0, 1.02, -0.02],
+    [-0.08, -0.02, 0.90]
+  ],
+  Shade: [
+    [1.22, -0.08, -0.14],
+    [0.0, 1.04, -0.04],
+    [-0.12, -0.04, 0.82]
+  ],
+  Tungsten: [
+    [0.78, 0.05, 0.17],
+    [0.0, 0.96, 0.04],
+    [0.12, 0.04, 1.28]
+  ],
+  Fluorescent: [
+    [1.08, -0.12, 0.04],
+    [0.0, 0.92, 0.08],
+    [0.04, -0.06, 1.14]
+  ],
+  Flash: [
+    [1.06, -0.02, -0.04],
+    [0.0, 1.0, 0.0],
+    [-0.04, 0.0, 0.96]
+  ]
+};
+
+// Sample neutral gray point for White Balance Eyedropper
+export const sampleNeutralWhiteBalance = (
+  imageData: ImageData,
+  centerX: number,
+  centerY: number,
+  radius: number = 3
+): { kelvin: number; tint: number } => {
+  const { data, width, height } = imageData;
+  let totalR = 0, totalG = 0, totalB = 0, count = 0;
+
+  for (let dy = -radius; dy <= radius; dy++) {
+    for (let dx = -radius; dx <= radius; dx++) {
+      const x = Math.max(0, Math.min(width - 1, centerX + dx));
+      const y = Math.max(0, Math.min(height - 1, centerY + dy));
+      const idx = (y * width + x) * 4;
+      totalR += data[idx];
+      totalG += data[idx + 1];
+      totalB += data[idx + 2];
+      count++;
+    }
+  }
+
+  const avgR = totalR / count;
+  const avgG = totalG / count;
+  const avgB = totalB / count;
+
+  // Compute Kelvin shift relative to neutral
+  const rRatio = avgR / (avgG || 1);
+  const bRatio = avgB / (avgG || 1);
+
+  // Approximate Kelvin from R/B ratio
+  const kelvinEst = Math.round(5500 * (bRatio / (rRatio || 1)));
+  const kelvin = Math.max(2000, Math.min(12000, kelvinEst));
+
+  // Compute Tint (Green vs Magenta deviation)
+  const tintEst = Math.round(((avgR + avgB) * 0.5 - avgG) * 1.5);
+  const tint = Math.max(-100, Math.min(100, tintEst));
+
+  return { kelvin, tint };
+};
+
 // Convolution helper for sharpening
 const applyConvolution = (data: Uint8ClampedArray, width: number, height: number, kernel: number[]) => {
   const side = Math.round(Math.sqrt(kernel.length));
@@ -684,13 +877,29 @@ export const processImage = async (
   const dehaze = state.dehaze / 100;
   const grainAmount = state.grain * 0.5;
 
-  // --- Pre-calc RAW Constants ---
-  const rawExposureMultiplier = state.rawExposureEV !== undefined ? Math.pow(2, state.rawExposureEV) : 1;
-  const rawTempAdjust = state.rawTemperature !== undefined ? (state.rawTemperature / 100) : 0;
-  const rawTintAdjust = state.rawTint !== undefined ? (state.rawTint / 100) : 0;
-  const rawHighlightsRecoveryFactor = state.rawHighlights !== undefined ? (state.rawHighlights / 100) : 0;
-  const rawShadowsLiftFactor = state.rawShadows !== undefined ? (state.rawShadows / 100) : 0;
-  const rawProfile = state.rawProfile || 'Standard';
+  // --- Pre-calc Linear RAW Engine Constants ---
+  const rawKelvin = state.rawKelvin || (5500 + (state.rawTemperature ? state.rawTemperature * 25 : 0));
+  const rawTint = (state.rawTint || 0) + (state.rawTemperature ? state.rawTemperature * 0.15 : 0);
+  const [wbR, wbG, wbB] = kelvinToRGBFactors(rawKelvin, rawTint);
+
+  const rawExposureFactor = Math.pow(2, state.rawExposureEV || 0);
+  const rawHighlightsFactor = (state.rawHighlights || 0) / 100;
+  const rawShadowsFactor = (state.rawShadows || 0) / 100;
+  const rawWhitesFactor = (state.rawWhites || 0) / 100;
+  const rawBlacksFactor = (state.rawBlacks || 0) / 100;
+  const rawClarityFactor = (state.rawClarity || 0) / 100;
+  const sensorMatrix = CAMERA_PROFILES[state.rawProfile || 'Standard'] || CAMERA_PROFILES.Standard;
+
+  const isRawActive = (state.rawExposureEV || 0) !== 0 ||
+                      (state.rawKelvin && state.rawKelvin !== 5500) ||
+                      (state.rawTemperature || 0) !== 0 ||
+                      (state.rawTint || 0) !== 0 ||
+                      (state.rawHighlights || 0) !== 0 ||
+                      (state.rawShadows || 0) !== 0 ||
+                      (state.rawWhites || 0) !== 0 ||
+                      (state.rawBlacks || 0) !== 0 ||
+                      (state.rawClarity || 0) !== 0 ||
+                      (state.rawProfile && state.rawProfile !== 'Standard');
 
   // Precompute Global Color Grading definitions
   const isColorGradingActive = Object.values(state.colorGrade).some(c => c.hue !== 0 || c.saturation !== 0 || c.luminance !== 0);
@@ -737,7 +946,7 @@ export const processImage = async (
     blurCanvas.height = canvas.height;
     const bCtx = blurCanvas.getContext('2d');
     if (bCtx) {
-      bCtx.filter = `blur(${state.lensBlur.blurRadius * 0.22}px)`; // map 0-100 to 0-22px max blur
+      bCtx.filter = `blur(${state.lensBlur.blurRadius * 0.22}px)`;
       bCtx.drawImage(canvas, 0, 0);
       blurData = bCtx.getImageData(0, 0, canvas.width, canvas.height).data;
     }
@@ -757,123 +966,91 @@ export const processImage = async (
   for (let i = 0; i < len; i += 4) {
     if (data[i+3] === 0) continue;
 
-    let r = data[i];
-    let g = data[i + 1];
-    let b = data[i + 2];
+    // --- 0. LINEAR SCENE-REFERRED 32-BIT RAW DEVELOPMENT PIPELINE ---
+    let linR = SRGB_TO_LINEAR_LUT[data[i]];
+    let linG = SRGB_TO_LINEAR_LUT[data[i + 1]];
+    let linB = SRGB_TO_LINEAR_LUT[data[i + 2]];
 
-    // 0. RAW DEVELOPMENT STAGE
-    // a. Exposure EV
-    if (rawExposureMultiplier !== 1) {
-        r *= rawExposureMultiplier;
-        g *= rawExposureMultiplier;
-        b *= rawExposureMultiplier;
-    }
-    
-    // b. RAW Temperature & Tint
-    if (rawTempAdjust !== 0 || rawTintAdjust !== 0) {
-        r *= (1 + rawTempAdjust * 0.25);
-        b *= (1 - rawTempAdjust * 0.25);
-        g *= (1 - rawTintAdjust * 0.20);
-        r *= (1 + rawTintAdjust * 0.05);
-        b *= (1 + rawTintAdjust * 0.05);
-    }
-    
-    // c. RAW Highlights Recovery
-    if (rawHighlightsRecoveryFactor !== 0) {
-        const threshold = 180;
-        if (r > threshold || g > threshold || b > threshold) {
-            const decay = Math.max(0, rawHighlightsRecoveryFactor);
-            const boost = Math.min(0, rawHighlightsRecoveryFactor);
-            
-            if (decay > 0) {
-                if (r > threshold) r = threshold + (r - threshold) * (1 - decay * 0.65);
-                if (g > threshold) g = threshold + (g - threshold) * (1 - decay * 0.65);
-                if (b > threshold) b = threshold + (b - threshold) * (1 - decay * 0.65);
-            } else if (boost < 0) {
-                const bFactor = 1 - boost * 0.35;
-                if (r > threshold) r = Math.min(255, threshold + (r - threshold) * bFactor);
-                if (g > threshold) g = Math.min(255, threshold + (g - threshold) * bFactor);
-                if (b > threshold) b = Math.min(255, threshold + (b - threshold) * bFactor);
-            }
+    if (isRawActive) {
+      // a. Physical Exposure EV (Linear optical power scaling)
+      if (rawExposureFactor !== 1) {
+        linR *= rawExposureFactor;
+        linG *= rawExposureFactor;
+        linB *= rawExposureFactor;
+      }
+
+      // b. Linear Planckian White Balance (Kelvin + Tint)
+      linR *= wbR;
+      linG *= wbG;
+      linB *= wbB;
+
+      // c. 3x3 Camera Sensor Matrix Color Transform
+      const mr = linR * sensorMatrix[0][0] + linG * sensorMatrix[0][1] + linB * sensorMatrix[0][2];
+      const mg = linR * sensorMatrix[1][0] + linG * sensorMatrix[1][1] + linB * sensorMatrix[1][2];
+      const mb = linR * sensorMatrix[2][0] + linG * sensorMatrix[2][1] + linB * sensorMatrix[2][2];
+      linR = Math.max(0, mr);
+      linG = Math.max(0, mg);
+      linB = Math.max(0, mb);
+
+      // d. Linear Highlight Shoulder Recovery & Compression
+      if (rawHighlightsFactor !== 0) {
+        if (rawHighlightsFactor > 0) {
+          if (linR > 0.45) linR = 0.45 + (linR - 0.45) / (1 + (linR - 0.45) * rawHighlightsFactor * 2.2);
+          if (linG > 0.45) linG = 0.45 + (linG - 0.45) / (1 + (linG - 0.45) * rawHighlightsFactor * 2.2);
+          if (linB > 0.45) linB = 0.45 + (linB - 0.45) / (1 + (linB - 0.45) * rawHighlightsFactor * 2.2);
+        } else {
+          const boost = Math.abs(rawHighlightsFactor);
+          if (linR > 0.45) linR = 0.45 + (linR - 0.45) * (1 + boost * 0.9);
+          if (linG > 0.45) linG = 0.45 + (linG - 0.45) * (1 + boost * 0.9);
+          if (linB > 0.45) linB = 0.45 + (linB - 0.45) * (1 + boost * 0.9);
         }
+      }
+
+      // e. Linear Shadows Toe Expansion (Fill light)
+      if (rawShadowsFactor !== 0) {
+        const liftShadow = (c: number, s: number) => {
+          if (c >= 0.5) return c;
+          const w = 1 - c / 0.5;
+          return Math.max(0, c + w * w * (s * 0.35));
+        };
+        linR = liftShadow(linR, rawShadowsFactor);
+        linG = liftShadow(linG, rawShadowsFactor);
+        linB = liftShadow(linB, rawShadowsFactor);
+      }
+
+      // f. Whites & Blacks dynamic range clipping
+      if (rawWhitesFactor !== 0) {
+        linR *= (1 + rawWhitesFactor * 0.35);
+        linG *= (1 + rawWhitesFactor * 0.35);
+        linB *= (1 + rawWhitesFactor * 0.35);
+      }
+      if (rawBlacksFactor !== 0) {
+        const offset = rawBlacksFactor * 0.05;
+        linR = Math.max(0, linR + offset);
+        linG = Math.max(0, linG + offset);
+        linB = Math.max(0, linB + offset);
+      }
+
+      // g. Micro-contrast / Linear Clarity
+      if (rawClarityFactor !== 0) {
+        const avgLin = (linR + linG + linB) / 3;
+        const midDiff = avgLin - 0.35;
+        const cFactor = 1 + rawClarityFactor * 0.4 * (1 - Math.abs(midDiff) * 2);
+        linR = Math.max(0, avgLin + (linR - avgLin) * cFactor);
+        linG = Math.max(0, avgLin + (linG - avgLin) * cFactor);
+        linB = Math.max(0, avgLin + (linB - avgLin) * cFactor);
+      }
+
+      // h. ACES Filmic Tonemap to prevent digital clipping
+      linR = acesTonemap(linR);
+      linG = acesTonemap(linG);
+      linB = acesTonemap(linB);
     }
-    
-    // d. RAW Shadows Recovery
-    if (rawShadowsLiftFactor !== 0) {
-        const maxVal = 100;
-        const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-        if (lum < maxVal) {
-            const shadowMask = (maxVal - lum) / maxVal;
-            const lift = rawShadowsLiftFactor * 0.65 * shadowMask;
-            r += lift;
-            g += lift;
-            b += lift;
-        }
-    }
-    
-    // e. RAW Sensor Camera Profile
-    if (rawProfile !== 'Standard') {
-        if (rawProfile === 'Vivid') {
-            const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-            r = 128 + (r - 128) * 1.15;
-            g = 128 + (g - 128) * 1.15;
-            b = 128 + (b - 128) * 1.15;
-            r = lum + (r - lum) * 1.25;
-            g = lum + (g - lum) * 1.25;
-            b = lum + (b - lum) * 1.25;
-        } else if (rawProfile === 'Landscape') {
-            const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-            r = 128 + (r - 128) * 1.05;
-            g = 128 + (g - 128) * 1.05;
-            b = 128 + (b - 128) * 1.05;
-            r = lum + (r - lum) * 1.1;
-            g = lum + (g - lum) * 1.35;
-            b = lum + (b - lum) * 1.35;
-        } else if (rawProfile === 'Portrait') {
-            const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-            r = 128 + (r - 128) * 0.95;
-            g = 128 + (g - 128) * 0.95;
-            b = 128 + (b - 128) * 0.95;
-            r = lum + (r - lum) * 1.05;
-            g = lum + (g - lum) * 1.0;
-            b = lum + (b - lum) * 0.92;
-        } else if (rawProfile === 'Monochrome') {
-            const mono = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-            const contrastedMono = clamp(128 + (mono - 128) * 1.12, 0, 255);
-            r = contrastedMono;
-            g = contrastedMono;
-            b = contrastedMono;
-        } else if (rawProfile === 'Sunny') {
-            // Warm golden daylight
-            r = r * 1.05;
-            b = b * 0.95;
-        } else if (rawProfile === 'Cloudy') {
-            // Extra warming correction for overcast sky
-            r = r * 1.14;
-            g = g * 1.02;
-            b = b * 0.90;
-        } else if (rawProfile === 'Shade') {
-            // High compensation warming for blue open shadow
-            r = r * 1.22;
-            g = g * 1.04;
-            b = b * 0.82;
-        } else if (rawProfile === 'Tungsten') {
-            // Cool-down correction for yellow incandescent bulbs
-            r = r * 0.76;
-            g = g * 0.94;
-            b = b * 1.28;
-        } else if (rawProfile === 'Fluorescent') {
-            // Tint and magenta correction for gas discharge tubes
-            r = r * 1.08;
-            g = g * 0.88;
-            b = b * 1.14;
-        } else if (rawProfile === 'Flash') {
-            // Neutral gold correction for flash skin tones
-            r = r * 1.06;
-            g = g * 1.00;
-            b = b * 0.96;
-        }
-    }
+
+    // Convert Linear back to Display sRGB
+    let r = linearToSRGB(linR);
+    let g = linearToSRGB(linG);
+    let b = linearToSRGB(linB);
 
     // A. GLOBAL ADJUSTMENTS
     [r, g, b] = applySinglePixel(r, g, b, {

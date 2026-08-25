@@ -71,11 +71,15 @@ export const PresetModal: React.FC<PresetModalProps> = ({
         },
         hdrScape: { ...currentState.hdrScape },
         grainyFilm: { ...currentState.grainyFilm },
+        rawKelvin: currentState.rawKelvin,
         rawTemperature: currentState.rawTemperature,
         rawTint: currentState.rawTint,
         rawExposureEV: currentState.rawExposureEV,
         rawHighlights: currentState.rawHighlights,
         rawShadows: currentState.rawShadows,
+        rawWhites: currentState.rawWhites,
+        rawBlacks: currentState.rawBlacks,
+        rawClarity: currentState.rawClarity,
         rawProfile: currentState.rawProfile,
         overlays: includeOverlays ? [...currentState.overlays] : []
       };

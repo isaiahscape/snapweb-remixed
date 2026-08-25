@@ -99,13 +99,18 @@ export interface GrainyFilmState {
 }
 
 export interface ImageState {
-  // RAW Developer Adjustments (Only active for RAW images)
+  // RAW Developer Adjustments (Linear scene-referred 32-bit float engine)
+  rawKelvin: number; // 2000 to 12000K (Default: 5500K daylight)
   rawTemperature: number; // -100 to 100
-  rawTint: number; // -100 to 100
-  rawExposureEV: number; // -3.0 to 3.0
-  rawHighlights: number; // -100 to 100
-  rawShadows: number; // -100 to 100
-  rawProfile: 'Standard' | 'Vivid' | 'Landscape' | 'Portrait' | 'Monochrome' | 'Sunny' | 'Cloudy' | 'Shade' | 'Tungsten' | 'Fluorescent' | 'Flash';
+  rawTint: number; // -100 to 100 (Green / Magenta)
+  rawExposureEV: number; // -5.0 to 5.0 EV in 0.05 increments
+  rawHighlights: number; // -100 to 100 (Linear shoulder recovery)
+  rawShadows: number; // -100 to 100 (Linear toe lift)
+  rawWhites: number; // -100 to 100
+  rawBlacks: number; // -100 to 100
+  rawClarity: number; // -100 to 100 (Linear micro-contrast)
+  rawDenoise: number; // 0 to 100 (RAW luminance noise reduction)
+  rawProfile: 'Standard' | 'Neutral' | 'Vivid' | 'Landscape' | 'Portrait' | 'Monochrome' | 'Classic Chrome' | 'Velvia' | 'Sunny' | 'Cloudy' | 'Shade' | 'Tungsten' | 'Fluorescent' | 'Flash';
 
   // Light & Color
   brightness: number; // -100 to 100
@@ -191,11 +196,16 @@ export interface CustomPreset {
 }
 
 export const DEFAULT_IMAGE_STATE: ImageState = {
+  rawKelvin: 5500,
   rawTemperature: 0,
   rawTint: 0,
   rawExposureEV: 0,
   rawHighlights: 0,
   rawShadows: 0,
+  rawWhites: 0,
+  rawBlacks: 0,
+  rawClarity: 0,
+  rawDenoise: 0,
   rawProfile: 'Standard',
 
   brightness: 0,
