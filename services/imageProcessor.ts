@@ -1,5 +1,5 @@
 
-import { ImageState, ColorChannel, ColorAdjustment, MaskSettings, MaskLayer } from '../types';
+import { ImageState, ColorChannel, ColorAdjustment, MaskSettings, MaskLayer, OverlayItem } from '../types';
 import UTIF from 'utif';
 
 // Helper to clamp values
@@ -1164,7 +1164,117 @@ export const processImage = async (
     ctx.fillRect(0, 0, canvas.width, canvas.height);
   }
 
+  // Composite Graphic Overlays (Logos, Icons, Text Watermarks)
+  if (state.overlays && state.overlays.length > 0) {
+    await renderOverlays(ctx, state.overlays, canvas.width, canvas.height);
+  }
+
   return ctx.getImageData(0, 0, canvas.width, canvas.height);
+};
+
+const overlayImageCache = new Map<string, HTMLImageElement>();
+
+const getLoadedOverlayImage = (src: string): Promise<HTMLImageElement> => {
+  if (overlayImageCache.has(src)) {
+    const cached = overlayImageCache.get(src)!;
+    if (cached.complete) return Promise.resolve(cached);
+  }
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      overlayImageCache.set(src, img);
+      resolve(img);
+    };
+    img.onerror = reject;
+    img.src = src;
+  });
+};
+
+const renderOverlays = async (ctx: CanvasRenderingContext2D, overlays: OverlayItem[], width: number, height: number) => {
+  if (!overlays || overlays.length === 0) return;
+
+  for (const item of overlays) {
+    if (!item.visible || item.opacity <= 0) continue;
+
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, Math.min(1, item.opacity / 100));
+    ctx.globalCompositeOperation = (item.blendMode || 'source-over') as GlobalCompositeOperation;
+
+    const posX = item.x * width;
+    const posY = item.y * height;
+    const baseDim = Math.min(width, height);
+
+    ctx.translate(posX, posY);
+    if (item.rotation) {
+      ctx.rotate((item.rotation * Math.PI) / 180);
+    }
+
+    if (item.shadow) {
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.65)';
+      ctx.shadowBlur = 8;
+      ctx.shadowOffsetX = 2;
+      ctx.shadowOffsetY = 2;
+    }
+
+    if (item.type === 'image' && item.src) {
+      try {
+        const img = await getLoadedOverlayImage(item.src);
+        const targetWidth = baseDim * (item.scale || 0.25);
+        const aspect = (img.naturalHeight || img.height || 1) / (img.naturalWidth || img.width || 1);
+        const targetHeight = targetWidth * aspect;
+        ctx.drawImage(img, -targetWidth / 2, -targetHeight / 2, targetWidth, targetHeight);
+      } catch (err) {
+        console.warn('Failed to render overlay image:', err);
+      }
+    } else if (item.type === 'text' && item.text) {
+      const fontSize = Math.max(12, Math.round(baseDim * (item.scale || 0.06)));
+      ctx.font = `bold ${fontSize}px ${item.fontFamily || 'Inter, sans-serif'}`;
+      ctx.fillStyle = item.color || '#ffffff';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(item.text, 0, 0);
+    } else if (item.type === 'icon') {
+      const size = Math.max(16, Math.round(baseDim * (item.scale || 0.12)));
+      ctx.fillStyle = item.color || '#ffffff';
+      ctx.strokeStyle = item.color || '#ffffff';
+      ctx.lineWidth = Math.max(2, size * 0.08);
+
+      const r = size / 2;
+      if (item.iconName === 'copyright') {
+        ctx.beginPath();
+        ctx.arc(0, 0, r, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.font = `bold ${Math.round(size * 0.55)}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('C', 0, 1);
+      } else if (item.iconName === 'camera') {
+        ctx.beginPath();
+        ctx.strokeRect(-r, -r * 0.65, size, size * 1.3);
+        ctx.beginPath();
+        ctx.arc(0, 0, r * 0.4, 0, Math.PI * 2);
+        ctx.stroke();
+      } else if (item.iconName === 'star') {
+        ctx.beginPath();
+        for (let i = 0; i < 5; i++) {
+          const outerAngle = (i * 4 * Math.PI) / 5 - Math.PI / 2;
+          const sx = Math.cos(outerAngle) * r;
+          const sy = Math.sin(outerAngle) * r;
+          if (i === 0) ctx.moveTo(sx, sy);
+          else ctx.lineTo(sx, sy);
+        }
+        ctx.closePath();
+        ctx.fill();
+      } else {
+        ctx.beginPath();
+        ctx.arc(0, 0, r, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
+
+    ctx.restore();
+  }
 };
 
 export const generateResultUrl = async (source: HTMLImageElement, state: ImageState, format: 'jpeg' | 'png' = 'jpeg', quality: number = 0.95): Promise<string> => {

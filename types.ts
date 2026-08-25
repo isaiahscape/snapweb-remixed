@@ -139,10 +139,13 @@ export interface ImageState {
   flipH: boolean;
   flipV: boolean;
   crop: { x: number; y: number; width: number; height: number } | null;
-  constrain: boolean; // Auto-zoom to fill bounds when rotating
+  constrain: boolean;
 
   // Local Selective Edits
   masks: MaskLayer[];
+
+  // Overlays (Logos, Icons, Watermarks)
+  overlays: OverlayItem[];
 
   // SNAPE-STYLE TOOLS
   curves: {
@@ -156,6 +159,35 @@ export interface ImageState {
   healingStrokes: HealingStroke[];
   hdrScape: HDRScapeState;
   grainyFilm: GrainyFilmState;
+}
+
+export type OverlayBlendMode = 'normal' | 'multiply' | 'screen' | 'overlay' | 'soft-light' | 'darken' | 'lighten';
+
+export interface OverlayItem {
+  id: string;
+  type: 'image' | 'icon' | 'text';
+  src?: string;
+  text?: string;
+  iconName?: string;
+  fontFamily?: string;
+  color?: string;
+  x: number; // 0.0 to 1.0
+  y: number; // 0.0 to 1.0
+  scale: number; // 0.05 to 1.5
+  rotation: number; // -180 to 180 degrees
+  opacity: number; // 0 to 100
+  blendMode: OverlayBlendMode;
+  visible: boolean;
+  shadow?: boolean;
+}
+
+export interface CustomPreset {
+  id: string;
+  name: string;
+  description?: string;
+  createdAt: number;
+  gradient: string;
+  adjustments: Partial<ImageState>;
 }
 
 export const DEFAULT_IMAGE_STATE: ImageState = {
@@ -193,6 +225,7 @@ export const DEFAULT_IMAGE_STATE: ImageState = {
   crop: null,
   constrain: false,
   masks: [],
+  overlays: [],
 
   // SNAP-STYLE DEFAULTS
   curves: {
@@ -206,7 +239,7 @@ export const DEFAULT_IMAGE_STATE: ImageState = {
     enabled: false,
     x: 50,
     y: 50,
-    blurRadius: 0, // start at 0 (meaning disabled until adjusted, or simple slider control)
+    blurRadius: 0,
     transitionSize: 40,
     innerRadius: 20,
     vignette: 20,

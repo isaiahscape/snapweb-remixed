@@ -12,7 +12,9 @@ import {
   LookPreset,
   PictureSession,
   LoadedFileInfo,
-  ExifData
+  ExifData,
+  CustomPreset,
+  OverlayItem
 } from './types';
 import { processImage, generateResultUrl, loadRawImage, getClosestColorChannel } from './services/imageProcessor';
 import Histogram from './components/Histogram';
@@ -21,17 +23,23 @@ import { Slider, ToolButton, IconButton } from './components/Controls';
 import Cropper from './components/Cropper';
 import ColorMixer from './components/ColorMixer';
 import { PictureTabs } from './components/PictureTabs';
+import { WatermarkEditor } from './components/WatermarkEditor';
+import { PresetModal } from './components/PresetModal';
 import { 
   saveRecentEdit, 
   getRecentEdits, 
   deleteRecentEdit, 
   clearAllRecentEdits, 
-  RecentEditRecord 
+  RecentEditRecord,
+  saveCustomPreset,
+  getCustomPresets,
+  deleteCustomPreset
 } from './services/storageService';
 import { 
   RotateCw, RotateCcw, FlipHorizontal, FlipVertical, Loader2, FolderOpen, Cloud, LogOut, 
   RefreshCw, Globe, Settings2, ArrowLeft, AlertCircle, ZoomIn, ZoomOut, Maximize2, 
-  Upload as LucideUpload, X, Share2, Copy, Check, Mail, Link, Clock, Trash2, Layers 
+  Upload as LucideUpload, X, Share2, Copy, Check, Mail, Link, Clock, Trash2, Layers,
+  Bookmark, Sparkles, Plus, Stamp
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ExifReader from 'exifreader';
@@ -269,10 +277,26 @@ const App: React.FC = () => {
   const [exportFormat, setExportFormat] = useState<'jpeg' | 'png'>('jpeg');
   const [exportQuality, setExportQuality] = useState<number>(0.95);
   const [activeModalTab, setActiveModalTab] = useState<'export' | 'share'>('export');
-  const [isCopied, setIsCopied] = useState(false);
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
   const [preserveExif, setPreserveExif] = useState<boolean>(true);
   const [showHistogram, setShowHistogram] = useState<boolean>(false);
+  const [customPresets, setCustomPresets] = useState<CustomPreset[]>([]);
+  const [showPresetModal, setShowPresetModal] = useState<boolean>(false);
+
+  useEffect(() => {
+    getCustomPresets().then(items => setCustomPresets(items)).catch(console.warn);
+  }, []);
+
+  const handleDeleteCustomPreset = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await deleteCustomPreset(id);
+      setCustomPresets(prev => prev.filter(p => p.id !== id));
+      showToast("Custom preset removed", "info");
+    } catch (err) {
+      console.error("Failed to delete preset:", err);
+    }
+  };
 
   // Workspace configuration (sidebar position left/right, show/hide UI for review)
   const [sidebarPosition, setSidebarPosition] = useState<'left' | 'right'>(() => {
@@ -2734,57 +2758,117 @@ const App: React.FC = () => {
                                 <h3 className="text-xs font-black uppercase tracking-wider text-white">Choose a Look</h3>
                                 <p className="text-[9px] text-neutral-500 mt-0.5">Instant professional grade style baselines</p>
                             </div>
-                            {appliedLookId && (
+                            <div className="flex items-center gap-1.5">
                                 <button
-                                    onClick={() => {
-                                      setImageState(prev => ({
-                                        ...prev,
-                                        rawTemperature: DEFAULT_IMAGE_STATE.rawTemperature,
-                                        rawTint: DEFAULT_IMAGE_STATE.rawTint,
-                                        rawExposureEV: DEFAULT_IMAGE_STATE.rawExposureEV,
-                                        rawHighlights: DEFAULT_IMAGE_STATE.rawHighlights,
-                                        rawShadows: DEFAULT_IMAGE_STATE.rawShadows,
-                                        rawProfile: DEFAULT_IMAGE_STATE.rawProfile,
-                                        brightness: DEFAULT_IMAGE_STATE.brightness,
-                                        contrast: DEFAULT_IMAGE_STATE.contrast,
-                                        saturation: DEFAULT_IMAGE_STATE.saturation,
-                                        ambiance: DEFAULT_IMAGE_STATE.ambiance,
-                                        warmth: DEFAULT_IMAGE_STATE.warmth,
-                                        tint: DEFAULT_IMAGE_STATE.tint,
-                                        highlights: DEFAULT_IMAGE_STATE.highlights,
-                                        shadows: DEFAULT_IMAGE_STATE.shadows,
-                                        structure: DEFAULT_IMAGE_STATE.structure,
-                                        tonalContrast: DEFAULT_IMAGE_STATE.tonalContrast,
-                                        tonalHighTones: DEFAULT_IMAGE_STATE.tonalHighTones,
-                                        tonalMidTones: DEFAULT_IMAGE_STATE.tonalMidTones,
-                                        tonalLowTones: DEFAULT_IMAGE_STATE.tonalLowTones,
-                                        tonalProtectShadows: DEFAULT_IMAGE_STATE.tonalProtectShadows,
-                                        tonalProtectHighlights: DEFAULT_IMAGE_STATE.tonalProtectHighlights,
-                                        sharpening: DEFAULT_IMAGE_STATE.sharpening,
-                                        dehaze: DEFAULT_IMAGE_STATE.dehaze,
-                                        grain: DEFAULT_IMAGE_STATE.grain,
-                                        vignette: DEFAULT_IMAGE_STATE.vignette,
-                                        colorGrade: { ...DEFAULT_IMAGE_STATE.colorGrade },
-                                        curves: { 
-                                          rgb: [...DEFAULT_IMAGE_STATE.curves.rgb],
-                                          r: [...DEFAULT_IMAGE_STATE.curves.r],
-                                          g: [...DEFAULT_IMAGE_STATE.curves.g],
-                                          b: [...DEFAULT_IMAGE_STATE.curves.b]
-                                        },
-                                        hdrScape: { ...DEFAULT_IMAGE_STATE.hdrScape },
-                                        grainyFilm: { ...DEFAULT_IMAGE_STATE.grainyFilm },
-                                      }));
-                                      setAppliedLookId(null);
-                                      showToast("Reverted look adjustments", "info");
-                                    }}
-                                    className="text-[9px] text-red-500 hover:text-red-400 font-extrabold uppercase bg-red-950/20 px-2 py-1 rounded border border-red-900/30 transition-all cursor-pointer"
+                                    onClick={() => setShowPresetModal(true)}
+                                    className="text-[9px] text-white font-extrabold uppercase bg-cyan-600 hover:bg-cyan-500 px-2 py-1 rounded transition-all cursor-pointer flex items-center gap-1 shadow-sm"
+                                    title="Save Current Adjustments as Custom Preset"
                                 >
-                                    REVERT
+                                    <Plus className="w-3 h-3" />
+                                    <span>Save Look</span>
                                 </button>
-                            )}
+                                {appliedLookId && (
+                                    <button
+                                        onClick={() => {
+                                          setImageState(prev => ({
+                                            ...prev,
+                                            rawTemperature: DEFAULT_IMAGE_STATE.rawTemperature,
+                                            rawTint: DEFAULT_IMAGE_STATE.rawTint,
+                                            rawExposureEV: DEFAULT_IMAGE_STATE.rawExposureEV,
+                                            rawHighlights: DEFAULT_IMAGE_STATE.rawHighlights,
+                                            rawShadows: DEFAULT_IMAGE_STATE.rawShadows,
+                                            rawProfile: DEFAULT_IMAGE_STATE.rawProfile,
+                                            brightness: DEFAULT_IMAGE_STATE.brightness,
+                                            contrast: DEFAULT_IMAGE_STATE.contrast,
+                                            saturation: DEFAULT_IMAGE_STATE.saturation,
+                                            ambiance: DEFAULT_IMAGE_STATE.ambiance,
+                                            warmth: DEFAULT_IMAGE_STATE.warmth,
+                                            tint: DEFAULT_IMAGE_STATE.tint,
+                                            highlights: DEFAULT_IMAGE_STATE.highlights,
+                                            shadows: DEFAULT_IMAGE_STATE.shadows,
+                                            structure: DEFAULT_IMAGE_STATE.structure,
+                                            tonalContrast: DEFAULT_IMAGE_STATE.tonalContrast,
+                                            tonalHighTones: DEFAULT_IMAGE_STATE.tonalHighTones,
+                                            tonalMidTones: DEFAULT_IMAGE_STATE.tonalMidTones,
+                                            tonalLowTones: DEFAULT_IMAGE_STATE.tonalLowTones,
+                                            tonalProtectShadows: DEFAULT_IMAGE_STATE.tonalProtectShadows,
+                                            tonalProtectHighlights: DEFAULT_IMAGE_STATE.tonalProtectHighlights,
+                                            sharpening: DEFAULT_IMAGE_STATE.sharpening,
+                                            dehaze: DEFAULT_IMAGE_STATE.dehaze,
+                                            grain: DEFAULT_IMAGE_STATE.grain,
+                                            vignette: DEFAULT_IMAGE_STATE.vignette,
+                                            colorGrade: { ...DEFAULT_IMAGE_STATE.colorGrade },
+                                            curves: { 
+                                              rgb: [...DEFAULT_IMAGE_STATE.curves.rgb],
+                                              r: [...DEFAULT_IMAGE_STATE.curves.r],
+                                              g: [...DEFAULT_IMAGE_STATE.curves.g],
+                                              b: [...DEFAULT_IMAGE_STATE.curves.b]
+                                            },
+                                            hdrScape: { ...DEFAULT_IMAGE_STATE.hdrScape },
+                                            grainyFilm: { ...DEFAULT_IMAGE_STATE.grainyFilm },
+                                          }));
+                                          setAppliedLookId(null);
+                                          showToast("Reverted look adjustments", "info");
+                                        }}
+                                        className="text-[9px] text-red-500 hover:text-red-400 font-extrabold uppercase bg-red-950/20 px-2 py-1 rounded border border-red-900/30 transition-all cursor-pointer"
+                                    >
+                                        REVERT
+                                    </button>
+                                )}
+                            </div>
                         </div>
 
                         <div className="space-y-5 max-h-[calc(100vh-270px)] overflow-y-auto custom-scrollbar pr-1 pb-4">
+                            {/* Custom Presets Section */}
+                            {customPresets.length > 0 && (
+                                <div>
+                                    <div className="text-[9px] font-black uppercase tracking-wider text-pink-400 mb-2 flex items-center justify-between px-0.5 sticky top-0 bg-[#050505] py-1 z-10">
+                                        <div className="flex items-center gap-1.5">
+                                            <Bookmark className="w-3 h-3 text-pink-400" />
+                                            <span>My Custom Presets ({customPresets.length})</span>
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {customPresets.map((preset) => {
+                                            const isSelected = appliedLookId === preset.id;
+                                            return (
+                                                <div
+                                                    key={preset.id}
+                                                    onClick={() => applyLook(preset.adjustments, preset.id)}
+                                                    className={`group relative flex flex-col items-stretch text-left rounded-lg overflow-hidden border p-2 transition-all duration-250 cursor-pointer ${
+                                                        isSelected 
+                                                            ? 'bg-pink-500/10 border-pink-500/50 shadow-[0_4px_16px_rgba(236,72,153,0.15)]' 
+                                                            : 'bg-neutral-900/40 border-neutral-850 hover:bg-neutral-850/80 hover:border-neutral-700'
+                                                    }`}
+                                                >
+                                                    <div className="flex gap-2 items-center">
+                                                        <div className={`w-8 h-8 rounded shrink-0 bg-gradient-to-tr ${preset.gradient} shadow-md group-hover:scale-105 transition-transform duration-300 flex items-center justify-center`}>
+                                                            <Bookmark className="w-3.5 h-3.5 text-white/80" />
+                                                        </div>
+                                                        <div className="min-w-0 flex-1">
+                                                            <div className="flex items-center justify-between gap-1">
+                                                                <span className={`text-[10px] font-extrabold uppercase tracking-wide truncate ${isSelected ? 'text-pink-400' : 'text-neutral-200'}`}>
+                                                                    {preset.name}
+                                                                </span>
+                                                                <button
+                                                                    onClick={(e) => handleDeleteCustomPreset(preset.id, e)}
+                                                                    className="p-1 rounded text-neutral-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition cursor-pointer"
+                                                                    title="Delete Preset"
+                                                                >
+                                                                    <Trash2 className="w-3 h-3" />
+                                                                </button>
+                                                            </div>
+                                                            <div className="text-[8px] text-neutral-400 leading-normal line-clamp-1 mt-0.5" title={preset.description}>
+                                                                {preset.description || 'Custom look'}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
                             {/* Film Simulations Section */}
                             <div>
                                 <div className="text-[9px] font-black uppercase tracking-wider text-cyan-400 mb-2 flex items-center gap-1.5 px-0.5 sticky top-0 bg-[#050505] py-1 z-10">
@@ -3526,6 +3610,14 @@ const App: React.FC = () => {
 
                 {activePanelTab === 'creative' && (
                     <>
+                        {/* Watermarks, Logos & Icons */}
+                        <SidebarSection title="Watermark & Logos" defaultOpen={(imageState.overlays?.length || 0) > 0}>
+                            <WatermarkEditor
+                                overlays={imageState.overlays || []}
+                                onChange={(overlays) => setImageState(prev => ({ ...prev, overlays }))}
+                            />
+                        </SidebarSection>
+
                         {/* Curves Tone Splines */}
                         <CurvesEditor
                             curves={imageState.curves || { rgb: [{x:0,y:0},{x:1,y:1}], r:[{x:0,y:0},{x:1,y:1}], g:[{x:0,y:0},{x:1,y:1}], b:[{x:0,y:0},{x:1,y:1}] }}
@@ -4391,6 +4483,20 @@ const App: React.FC = () => {
             <span>{toast.message}</span>
           </motion.div>
         )}
+
+        <PresetModal
+          isOpen={showPresetModal}
+          onClose={() => setShowPresetModal(false)}
+          currentState={imageState}
+          onPresetSaved={(preset) => {
+            setCustomPresets(prev => [preset, ...prev]);
+            showToast(`Saved preset "${preset.name}"!`, "success");
+          }}
+          onPresetsImported={() => {
+            getCustomPresets().then(items => setCustomPresets(items)).catch(console.warn);
+            showToast("Presets imported successfully!", "success");
+          }}
+        />
       </AnimatePresence>
 
     </div>
